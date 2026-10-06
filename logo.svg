@@ -1,0 +1,49 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 200" width="600" height="200">
+  <defs>
+    <linearGradient id="bodyGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#fbe49a"/>
+      <stop offset="1" stop-color="#f0c156"/>
+    </linearGradient>
+  </defs>
+
+  <!-- ============ 左侧：奶黄包小精灵（与桌面精灵同款形象） ============ -->
+  <g transform="translate(8, 14) scale(1.22)">
+    <!-- 脚下投影 -->
+    <ellipse cx="48" cy="99" rx="28" ry="5" fill="rgba(150,110,40,.16)"/>
+    <!-- 两只小手 -->
+    <ellipse cx="15" cy="71" rx="7.5" ry="9" fill="#e8b34a" transform="rotate(22 15 71)"/>
+    <ellipse cx="81" cy="71" rx="7.5" ry="9" fill="#e8b34a" transform="rotate(-22 81 71)"/>
+    <!-- 两只小脚 -->
+    <ellipse cx="35" cy="96" rx="10" ry="5.5" fill="#e8b34a"/>
+    <ellipse cx="61" cy="96" rx="10" ry="5.5" fill="#e8b34a"/>
+    <!-- 身体 -->
+    <path d="M48 13 C 68 13, 84 33, 84 56 C 84 80, 68 96, 48 96 C 28 96, 12 80, 12 56 C 12 33, 28 13, 48 13 Z" fill="url(#bodyGrad)"/>
+    <!-- 高光 -->
+    <ellipse cx="36" cy="28" rx="9" ry="14" fill="rgba(255,255,255,.4)" transform="rotate(-20 36 28)"/>
+    <!-- 头顶叶芽 -->
+    <g>
+      <path d="M48 13 C 47 6, 52 1, 60 0 C 58 8, 52 12, 48 13 Z" fill="#7bc96f"/>
+      <path d="M48 13 C 49 6, 44 1, 37 0 C 39 8, 44 12, 48 13 Z" fill="#96d98a"/>
+      <path d="M48 13 L 48 4" stroke="#66b85a" stroke-width="1.6" stroke-linecap="round"/>
+    </g>
+    <!-- 脸 -->
+    <ellipse cx="48" cy="60" rx="27" ry="25" fill="#fffdf6"/>
+    <!-- 眼睛 -->
+    <ellipse cx="38" cy="56" rx="5" ry="6.2" fill="#4a3525"/>
+    <ellipse cx="58" cy="56" rx="5" ry="6.2" fill="#4a3525"/>
+    <circle cx="40" cy="53.6" r="1.9" fill="#fffdf6"/>
+    <circle cx="60" cy="53.6" r="1.9" fill="#fffdf6"/>
+    <circle cx="36.4" cy="58.4" r="0.9" fill="#fffdf6" opacity=".8"/>
+    <circle cx="56.4" cy="58.4" r="0.9" fill="#fffdf6" opacity=".8"/>
+    <!-- 腮红 -->
+    <ellipse cx="30" cy="67" rx="6" ry="3.4" fill="rgba(247,160,150,.5)"/>
+    <ellipse cx="66" cy="67" rx="6" ry="3.4" fill="rgba(247,160,150,.5)"/>
+    <!-- 微笑 -->
+    <path d="M44 71 Q 48 75 52 71" stroke="#4a3525" stroke-width="2" fill="none" stroke-linecap="round"/>
+  </g>
+
+  <!-- ============ 右侧：文字组合 ============ -->
+  <text x="150" y="104" font-family="Songti SC, STSong, SimSun, Noto Serif SC, serif" font-size="64" font-weight="bold" fill="#e88a6a">智伴</text>
+  <text x="154" y="140" font-family="Arial, Segoe UI, sans-serif" font-size="30" font-weight="bold" fill="#d99a2b" letter-spacing="1.5">PriorityPal</text>
+  <text x="154" y="172" font-family="Songti SC, STSong, SimSun, Microsoft YaHei, serif" font-size="15" fill="#8a7355" letter-spacing="2">AI 智能优先级事务管理桌面陪伴助手</text>
+</svg>

@@ -1,0 +1,612 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <title>PriorityPal 精灵</title>
+  <style>
+    /* 精灵各部位颜色都用 CSS 变量驱动，方便「换装」——
+       换一套主题就是换一组变量的值，SVG 和气泡的 fill/color 全部 var() 引用。
+       默认是「奶黄包」主题，JS 里可以切到别的主题。 */
+    :root {
+      --body-top: #fbe49a;
+      --body-bottom: #f0c156;
+      --limb: #e8b34a;
+      --sprout-a: #7bc96f;
+      --sprout-b: #96d98a;
+      --sprout-stem: #66b85a;
+      --eye: #4a3525;
+      --blush: rgba(247, 160, 150, .5);
+      --face: #fffdf6;
+      --glow: rgba(255, 255, 255, .4);
+      --shadow: rgba(150, 110, 40, .16);
+      --bubble-bg: #fffdf8;
+      --bubble-line: rgba(255, 92, 58, .35);
+      --bubble-text: #332b23;
+      --bubble-label: #ff5c3a;
+      --close-bg: rgba(180, 130, 40, .14);
+      --close-fg: #b89a5e;
+      --close-hover-bg: rgba(247, 160, 150, .22);
+      --close-hover-fg: #e08a6a;
+    }
+
+    /* 精灵窗是透明无边框的，所以：
+       · html/body 必须完全透明，否则会是一个白色方块
+       · 任何地方都不能出现不透明的大面积背景
+       · 圆角/阴影只加在精灵本体上 */
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      background: transparent !important;
+      overflow: hidden;
+      /* 整窗可拖动。但按钮要能点，后面用 no-drag 单独豁免 */
+      -webkit-app-region: drag;
+      user-select: none;
+      font-family: "Songti SC", "STSong", "SimSun", "Noto Serif SC", serif;
+    }
+
+    .stage {
+      position: relative;
+      width: 100%;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: flex-end;
+      padding-bottom: 6px;
+    }
+
+    /* 气泡：显示「现在最该做的一件事」。
+       这是整个精灵的存在意义 —— 它不只是一个装饰摆件。
+
+       宽度与行数都必须锁死：
+         桌面常驻的小窗口，被一条长任务撑成三行会挡住底下的东西，
+         而且精灵本身会被挤变形。这里固定两行、超出截断加省略号。 */
+    .bubble {
+      position: relative;
+      width: 188px;              /* 固定宽，不随内容伸缩 */
+      box-sizing: border-box;
+      margin-bottom: 8px;
+      padding: 9px 13px;
+      background: var(--bubble-bg);
+      border: 1px solid var(--bubble-line);
+      border-radius: 8px;
+      box-shadow: 0 2px 8px var(--shadow);
+      color: var(--bubble-text);
+      font-size: 13px;
+      line-height: 1.5;
+      letter-spacing: .02em;
+      text-align: center;
+      cursor: pointer;
+      -webkit-app-region: no-drag;   /* 气泡可点，不参与拖动 */
+      transition: transform 300ms cubic-bezier(.4, 0, .2, 1);
+    }
+    .bubble:hover { transform: translateY(-1px); }
+
+    /* 气泡下面的小尖角 */
+    .bubble::after {
+      content: "";
+      position: absolute;
+      left: 50%;
+      bottom: -6px;
+      width: 10px;
+      height: 10px;
+      margin-left: -5px;
+      background: var(--bubble-bg);
+      border-right: 1px solid var(--bubble-line);
+      border-bottom: 1px solid var(--bubble-line);
+      transform: rotate(45deg);
+    }
+
+    /* 气泡里那行「现在最该做」的小标签 */
+    .bubble-label {
+      display: block;
+      margin-bottom: 3px;
+      font-size: 10px;
+      letter-spacing: .18em;
+      color: var(--bubble-label);
+    }
+    .bubble-text {
+      display: -webkit-box;
+      -webkit-line-clamp: 2;        /* 最多两行 */
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      word-break: break-word;
+      min-height: 1.5em;
+    }
+    .bubble.is-empty .bubble-text { color: var(--close-fg); }
+
+    /* 精灵本体 */
+    .sprite {
+      position: relative;
+      width: 96px;
+      height: 104px;
+      cursor: grab;
+    }
+    .sprite:active { cursor: grabbing; }
+
+    .sprite svg {
+      display: block;
+      width: 100%;
+      height: 100%;
+      overflow: visible;
+    }
+
+    /* 呼吸：极缓慢的上下浮动，代表「活着」。
+       幅度必须小 —— 桌面上常驻的东西动作一大就变骚扰。 */
+    .sprite-body {
+      animation: breathe 4.2s ease-in-out infinite;
+      transform-origin: 50% 100%;
+    }
+    @keyframes breathe {
+      0%, 100% { transform: translateY(0); }
+      50%      { transform: translateY(-4px); }
+    }
+
+    /* 叶芽随风轻摆：周期长、幅度小，只在头顶悄悄动一下 */
+    .sprout {
+      animation: sway 3.8s ease-in-out infinite;
+      transform-origin: 48px 13px;
+    }
+    @keyframes sway {
+      0%, 100% { transform: rotate(-4deg); }
+      50%      { transform: rotate(4deg); }
+    }
+
+    /* 服装层：默认透明，当前套加 is-on 淡入（用 opacity 而非 display，才能做过渡） */
+    .outfit { opacity: 0; transition: opacity 280ms cubic-bezier(.16, 1, .3, 1); pointer-events: none; }
+    .outfit.is-on { opacity: 1; pointer-events: auto; }
+
+    /* 精灵本体：悬停时轻轻放大一点，像「注意到你了」 */
+    .sprite { transition: transform 220ms cubic-bezier(.4, 0, .2, 1); }
+    .sprite:hover { transform: scale(1.04); }
+
+    /* 弹跳：第一件事变化时由 JS 加一次 bounce 类。
+       用 scale 而不是 translateY，跟 breathe 的浮动不冲突 */
+    .sprite.bounce {
+      animation: bounce 540ms cubic-bezier(.34, 1.56, .64, 1);
+    }
+    @keyframes bounce {
+      0%, 100% { transform: scale(1); }
+      35%      { transform: scale(1.08, 1.12); }
+      70%      { transform: scale(.96, .95); }
+    }
+
+    /* 眨眼：随机间隔由 JS 控制，这里只管动一下 */
+    .eye { animation: none; }
+    .sprite-body.blink .eye {
+      animation: blink 160ms ease-in-out;
+    }
+    @keyframes blink {
+      0%, 100% { transform: scaleY(1); }
+      50%      { transform: scaleY(.08); }
+    }
+
+    /* 说话：气泡出现时轻轻弹一下 */
+    .sprite-body.talk .mouth {
+      animation: talk 420ms ease-in-out;
+    }
+    @keyframes talk {
+      0%, 100% { transform: scaleY(1); }
+      50%      { transform: scaleY(1.9); }
+    }
+
+    /* 关闭按钮：鼠标移上去才出现，平时不占视觉 */
+    .close-btn {
+      position: absolute;
+      top: 4px;
+      right: 6px;
+      width: 20px;
+      height: 20px;
+      display: grid;
+      place-items: center;
+      border: none;
+      border-radius: 50%;
+      background: var(--close-bg);
+      color: var(--close-fg);
+      font-size: 12px;
+      line-height: 1;
+      cursor: pointer;
+      opacity: 0;
+      transition: opacity 200ms ease;
+      -webkit-app-region: no-drag;
+      font-family: "Segoe UI Symbol", system-ui, sans-serif;
+    }
+    .stage:hover .close-btn { opacity: 1; }
+    .close-btn:hover { background: var(--close-hover-bg); color: var(--close-hover-fg); }
+
+    /* 换装按钮：放在关闭按钮左边，鼠标移上去才出现 */
+    .dress-btn {
+      position: absolute;
+      top: 4px;
+      right: 30px;
+      width: 20px;
+      height: 20px;
+      display: grid;
+      place-items: center;
+      border: none;
+      border-radius: 50%;
+      background: var(--close-bg);
+      font-size: 11px;
+      line-height: 1;
+      cursor: pointer;
+      opacity: 0;
+      transition: opacity 200ms ease;
+      -webkit-app-region: no-drag;
+    }
+    .stage:hover .dress-btn { opacity: 1; }
+    .dress-btn:hover { background: var(--close-hover-bg); }
+
+    /* 尊重系统「减少动态效果」 */
+    @media (prefers-reduced-motion: reduce) {
+      .sprite-body, .eye, .mouth { animation: none !important; }
+    }
+  </style>
+</head>
+<body>
+  <div class="stage" id="stage">
+
+    <!-- 说话气泡：显示当前「第一件事」。点它打开任务面板 -->
+    <div class="bubble" id="bubble" title="点击打开任务面板">
+      <span class="bubble-label" id="bubbleLabel">现在最该做</span>
+      <span class="bubble-text" id="bubbleText">先加一件事</span>
+    </div>
+
+    <!-- 精灵本体：Q 版形象，纯内联 SVG，不依赖任何外部图片 -->
+    <div class="sprite" id="sprite">
+      <svg viewBox="0 0 96 104" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <!-- 身体渐变：奶油黄，温暖明亮 -->
+          <linearGradient id="bodyGrad" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" stop-color="var(--body-top)" />
+            <stop offset="1" stop-color="var(--body-bottom)" />
+          </linearGradient>
+          <!-- 衣服明暗叠加：上亮下暗，模拟面料立体感 -->
+          <linearGradient id="clothShade" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" stop-color="#ffffff" stop-opacity="0.22"/>
+            <stop offset="0.5" stop-color="#ffffff" stop-opacity="0"/>
+            <stop offset="1" stop-color="#000000" stop-opacity="0.18"/>
+          </linearGradient>
+          <!-- 衣服投影：让衣服像浮在身体上，有厚度 -->
+          <filter id="clothShadow" x="-30%" y="-30%" width="160%" height="160%">
+            <feDropShadow dx="0" dy="3" stdDeviation="3" flood-color="#000000" flood-opacity="0.22"/>
+          </filter>
+        </defs>
+        <g class="sprite-body" id="spriteBody">
+          <!-- 脚下投影 -->
+          <ellipse cx="48" cy="99" rx="28" ry="5" fill="var(--shadow)" />
+
+          <!-- 两只小手：身体两侧 -->
+          <ellipse cx="15" cy="71" rx="7.5" ry="9" fill="var(--limb)" transform="rotate(22 15 71)" />
+          <ellipse cx="81" cy="71" rx="7.5" ry="9" fill="var(--limb)" transform="rotate(-22 81 71)" />
+
+          <!-- 两只小脚 -->
+          <ellipse cx="35" cy="96" rx="10" ry="5.5" fill="var(--limb)" />
+          <ellipse cx="61" cy="96" rx="10" ry="5.5" fill="var(--limb)" />
+
+          <!-- 身体：圆润蛋形 -->
+          <path d="M48 13 C 68 13, 84 33, 84 56 C 84 80, 68 96, 48 96 C 28 96, 12 80, 12 56 C 12 33, 28 13, 48 13 Z" fill="url(#bodyGrad)" />
+
+          <!-- 身体左上高光 -->
+          <ellipse cx="36" cy="28" rx="9" ry="14" fill="var(--glow)" transform="rotate(-20 36 28)" />
+
+          <!-- 头顶叶芽 -->
+          <g class="sprout">
+            <path d="M48 13 C 47 6, 52 1, 60 0 C 58 8, 52 12, 48 13 Z" fill="var(--sprout-a)" />
+            <path d="M48 13 C 49 6, 44 1, 37 0 C 39 8, 44 12, 48 13 Z" fill="var(--sprout-b)" />
+            <path d="M48 13 L 48 4" stroke="var(--sprout-stem)" stroke-width="1.6" stroke-linecap="round" />
+          </g>
+
+          <!-- 脸：椭圆，略上移，给下半身留出穿衣服的空间 -->
+          <ellipse cx="48" cy="44" rx="26" ry="22" fill="var(--face)" />
+
+          <!-- 眼睛 -->
+          <ellipse class="eye" cx="38" cy="40" rx="5" ry="6.2" fill="var(--eye)" style="transform-origin:38px 40px" />
+          <ellipse class="eye" cx="58" cy="40" rx="5" ry="6.2" fill="var(--eye)" style="transform-origin:58px 40px" />
+          <circle cx="40" cy="38" r="1.9" fill="#fffdf6" />
+          <circle cx="60" cy="38" r="1.9" fill="#fffdf6" />
+          <circle cx="36.4" cy="42.4" r="0.9" fill="#fffdf6" opacity=".8" />
+          <circle cx="56.4" cy="42.4" r="0.9" fill="#fffdf6" opacity=".8" />
+
+          <!-- 腮红 -->
+          <ellipse cx="31" cy="51" rx="6" ry="3.4" fill="var(--blush)" />
+          <ellipse cx="65" cy="51" rx="6" ry="3.4" fill="var(--blush)" />
+
+          <!-- 嘴 -->
+          <path class="mouth" d="M44 55 Q 48 59 52 55" stroke="var(--eye)" stroke-width="2" fill="none" stroke-linecap="round" style="transform-origin:48px 56px" />
+
+          <!-- 服装层：7 套真正的「衣服/配饰」，不是换身体颜色。
+               每套是独立 SVG 造型（帽子/领结/眼镜等），颜色用 --outfit / --outfit-2，
+               由 applyTheme 按主题索引切换显示哪个组（data-outfit=0..6）。 -->
+
+          <!-- 0 玩趣明快：珊瑚橙连衣裙 + 蝴蝶结 -->
+          <g class="outfit" data-outfit="0">
+            <path d="M13 66 C 13 79, 26 96, 48 96 C 70 96, 83 79, 83 66 Q 48 75 13 66 Z" fill="var(--outfit)" filter="url(#clothShadow)"/>
+            <path d="M13 66 C 13 79, 26 96, 48 96 C 70 96, 83 79, 83 66 Q 48 75 13 66 Z" fill="url(#clothShade)"/>
+            <path d="M34 66 L 36 58 L 41 58 L 40 68" stroke="var(--outfit)" stroke-width="3" fill="none"/>
+            <path d="M62 66 L 60 58 L 55 58 L 56 68" stroke="var(--outfit)" stroke-width="3" fill="none"/>
+            <circle cx="38" cy="58" r="1.8" fill="var(--outfit-2)"/>
+            <circle cx="58" cy="58" r="1.8" fill="var(--outfit-2)"/>
+            <path d="M40 72 L 56 72 L 54 80 L 42 80 Z" fill="var(--outfit-2)" opacity=".45"/>
+            <path d="M47 13 C 40 5 28 4 24 9 C 20 14 30 19 37 15 C 42 13 46 12 47 13 Z" fill="var(--outfit)"/>
+            <path d="M45 13 C 40 8 32 7 29 10 C 27 12 30 15 34 15 C 38 14 43 13 45 13 Z" fill="var(--outfit-2)" opacity=".55"/>
+            <path d="M49 13 C 56 5 68 4 72 9 C 76 14 66 19 59 15 C 54 13 51 12 49 13 Z" fill="var(--outfit)"/>
+            <path d="M51 13 C 56 8 64 7 67 10 C 69 12 66 15 62 15 C 58 14 53 13 51 13 Z" fill="var(--outfit-2)" opacity=".55"/>
+            <path d="M45 16 Q 42 22 44 26 Q 46 28 48 26 Q 50 22 49 16 Z" fill="var(--outfit)"/>
+            <path d="M51 16 Q 54 22 52 26 Q 50 28 48 26 Q 46 22 47 16 Z" fill="var(--outfit)" opacity=".8"/>
+            <ellipse cx="48" cy="13" rx="5.5" ry="4" fill="var(--outfit-2)"/>
+            <ellipse cx="46.5" cy="11.5" rx="2" ry="1.4" fill="#ffffff" opacity=".55"/>
+          </g>
+
+          <!-- 1 极致极简：素灰长袍 + 围巾 -->
+          <g class="outfit" data-outfit="1">
+            <path d="M13 66 C 13 79, 26 96, 48 96 C 70 96, 83 79, 83 66 Q 48 75 13 66 Z" fill="var(--outfit)" filter="url(#clothShadow)"/>
+            <path d="M13 66 C 13 79, 26 96, 48 96 C 70 96, 83 79, 83 66 Q 48 75 13 66 Z" fill="url(#clothShade)"/>
+            <path d="M37 60 Q 48 66 59 60 L 59 65 Q 48 71 37 65 Z" fill="var(--outfit-2)"/>
+          </g>
+
+          <!-- 2 杂志编辑：朱砂马甲 + 贝雷帽 -->
+          <g class="outfit" data-outfit="2">
+            <path d="M13 66 C 13 79, 26 96, 48 96 C 70 96, 83 79, 83 66 Q 48 75 13 66 Z" fill="var(--outfit)" filter="url(#clothShadow)"/>
+            <path d="M13 66 C 13 79, 26 96, 48 96 C 70 96, 83 79, 83 66 Q 48 75 13 66 Z" fill="url(#clothShade)"/>
+            <path d="M40 66 L 48 74 L 56 66 Q 48 70 40 66 Z" fill="#ffffff" opacity=".85"/>
+            <path d="M44 68 L 39 65 L 39 71 Z" fill="var(--outfit-2)"/>
+            <path d="M52 68 L 57 65 L 57 71 Z" fill="var(--outfit-2)"/>
+            <circle cx="48" cy="68" r="2.2" fill="var(--outfit)"/>
+            <circle cx="48" cy="80" r="1.5" fill="var(--outfit-2)"/>
+            <circle cx="48" cy="88" r="1.5" fill="var(--outfit-2)"/>
+            <path d="M24 14 Q 30 3 48 3 Q 66 3 72 14 Q 66 10 48 10 Q 30 10 24 14 Z" fill="var(--outfit)"/>
+            <path d="M34 9 Q 42 5 50 5" stroke="#ffffff" stroke-width="2" fill="none" opacity=".4" stroke-linecap="round"/>
+            <path d="M23 14 Q 48 20 73 14 Q 73 17 48 22 Q 23 17 23 14 Z" fill="var(--outfit-2)"/>
+            <circle cx="48" cy="4" r="2.5" fill="var(--outfit-2)"/>
+          </g>
+
+          <!-- 3 暗夜：深蓝斗篷 + 尖顶帽 -->
+          <g class="outfit" data-outfit="3">
+            <path d="M13 66 C 13 79, 26 96, 48 96 C 70 96, 83 79, 83 66 Q 48 75 13 66 Z" fill="var(--outfit)" filter="url(#clothShadow)"/>
+            <path d="M13 66 C 13 79, 26 96, 48 96 C 70 96, 83 79, 83 66 Q 48 75 13 66 Z" fill="url(#clothShade)"/>
+            <path d="M30 66 Q 48 72 66 66 Q 48 78 30 66 Z" fill="var(--outfit-2)" opacity=".55"/>
+            <circle cx="36" cy="82" r="1.3" fill="#ffffff" opacity=".85"/>
+            <circle cx="60" cy="86" r="1.3" fill="#ffffff" opacity=".85"/>
+            <path d="M31 17 Q 38 8 48 1 Q 58 8 65 17 Q 58 13 48 13 Q 38 13 31 17 Z" fill="var(--outfit)"/>
+            <path d="M45 6 Q 48 4 52 6" stroke="#ffffff" stroke-width="1.5" fill="none" opacity=".4"/>
+            <path d="M28 17 Q 48 23 68 17 Q 68 19 48 25 Q 28 19 28 17 Z" fill="var(--outfit-2)"/>
+            <path d="M56 4 A 4 4 0 1 1 63 8 A 3.2 3.2 0 1 0 56 4 Z" fill="#ffd23f"/>
+            <path d="M42 5 L 43 7 L 45 7 L 43.6 8 L 44 10 L 42 8.8 L 40 10 L 40.4 8 L 39 7 L 41 7 Z" fill="#ffffff"/>
+          </g>
+
+          <!-- 4 自然有机：苔藓围裙 + 花环 -->
+          <g class="outfit" data-outfit="4">
+            <path d="M13 66 C 13 79, 26 96, 48 96 C 70 96, 83 79, 83 66 Q 48 75 13 66 Z" fill="var(--outfit)" filter="url(#clothShadow)"/>
+            <path d="M13 66 C 13 79, 26 96, 48 96 C 70 96, 83 79, 83 66 Q 48 75 13 66 Z" fill="url(#clothShade)"/>
+            <path d="M36 66 L 38 58 L 42 58 L 42 68" stroke="var(--outfit-2)" stroke-width="2.5" fill="none"/>
+            <path d="M60 66 L 58 58 L 54 58 L 54 68" stroke="var(--outfit-2)" stroke-width="2.5" fill="none"/>
+            <rect x="40" y="83" width="16" height="7" rx="3" fill="var(--outfit-2)"/>
+            <path d="M26 15 Q 40 6 48 6 Q 56 6 70 15" stroke="var(--outfit-2)" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+            <g><circle cx="30" cy="11" r="2.4" fill="var(--outfit)"/><circle cx="30" cy="11" r="1" fill="#ffffff" opacity=".9"/></g>
+            <g><circle cx="39" cy="7" r="2.4" fill="var(--outfit-2)"/><circle cx="39" cy="7" r="1" fill="#ffffff" opacity=".9"/></g>
+            <g><circle cx="48" cy="6" r="2.6" fill="var(--outfit)"/><circle cx="48" cy="6" r="1.1" fill="#ffffff" opacity=".9"/></g>
+            <g><circle cx="57" cy="7" r="2.4" fill="var(--outfit-2)"/><circle cx="57" cy="7" r="1" fill="#ffffff" opacity=".9"/></g>
+            <g><circle cx="66" cy="11" r="2.4" fill="var(--outfit)"/><circle cx="66" cy="11" r="1" fill="#ffffff" opacity=".9"/></g>
+          </g>
+
+          <!-- 5 复古未来：霓虹铠甲 + 护目镜 -->
+          <g class="outfit" data-outfit="5">
+            <path d="M13 66 C 13 79, 26 96, 48 96 C 70 96, 83 79, 83 66 Q 48 75 13 66 Z" fill="var(--outfit)" filter="url(#clothShadow)"/>
+            <path d="M13 66 C 13 79, 26 96, 48 96 C 70 96, 83 79, 83 66 Q 48 75 13 66 Z" fill="url(#clothShade)"/>
+            <path d="M34 66 L 40 62 L 56 62 L 62 66 Q 48 74 34 66 Z" fill="var(--outfit-2)" opacity=".5"/>
+            <path d="M30 74 L 42 70 L 42 88" stroke="var(--outfit-2)" stroke-width="1.5" fill="none"/>
+            <path d="M66 74 L 54 70 L 54 88" stroke="var(--outfit-2)" stroke-width="1.5" fill="none"/>
+            <path d="M48 13 L 53 4" stroke="var(--outfit)" stroke-width="2.5" stroke-linecap="round"/>
+            <circle cx="54" cy="2.5" r="2.5" fill="var(--outfit-2)"/>
+            <circle cx="54" cy="2.5" r="1" fill="#ffffff" opacity=".7"/>
+            <rect x="29" y="34" width="17" height="12" rx="5" fill="var(--outfit)"/>
+            <rect x="31" y="36" width="13" height="8" rx="3.5" fill="#0d0f0d" opacity=".5"/>
+            <path d="M33 37 L 37 43" stroke="var(--outfit-2)" stroke-width="1.5" opacity=".8"/>
+            <rect x="50" y="34" width="17" height="12" rx="5" fill="var(--outfit)"/>
+            <rect x="52" y="36" width="13" height="8" rx="3.5" fill="#0d0f0d" opacity=".5"/>
+            <path d="M54 37 L 58 43" stroke="var(--outfit-2)" stroke-width="1.5" opacity=".8"/>
+            <rect x="46" y="38" width="4" height="5" rx="1.5" fill="var(--outfit)"/>
+            <path d="M29 37 L 25 35" stroke="var(--outfit)" stroke-width="2"/>
+            <path d="M67 37 L 71 35" stroke="var(--outfit)" stroke-width="2"/>
+          </g>
+
+          <!-- 6 轻奢雅致：金色礼服 + 礼帽 -->
+          <g class="outfit" data-outfit="6">
+            <path d="M13 66 C 13 79, 26 96, 48 96 C 70 96, 83 79, 83 66 Q 48 75 13 66 Z" fill="var(--outfit)" filter="url(#clothShadow)"/>
+            <path d="M13 66 C 13 79, 26 96, 48 96 C 70 96, 83 79, 83 66 Q 48 75 13 66 Z" fill="url(#clothShade)"/>
+            <path d="M22 70 Q 48 82 74 70 L 74 74 Q 48 86 22 74 Z" fill="var(--outfit-2)"/>
+            <rect x="45" y="76" width="6" height="4" rx="1" fill="#ffffff" opacity=".8"/>
+            <path d="M40 80 L 40 90 M 48 82 L 48 92 M 56 80 L 56 90" stroke="var(--outfit-2)" stroke-width="1.2" fill="none" opacity=".5"/>
+            <path d="M36 15 L 36 6 Q 48 2 60 6 L 60 15 Q 48 11 36 15 Z" fill="var(--outfit)"/>
+            <path d="M40 7 Q 48 4 56 7" stroke="#ffffff" stroke-width="1.5" fill="none" opacity=".45" stroke-linecap="round"/>
+            <path d="M29 15 Q 48 20 67 15 Q 67 17.5 48 22 Q 29 17.5 29 15 Z" fill="var(--outfit-2)"/>
+            <path d="M36 9 Q 48 12 60 9 L 60 11 Q 48 14 36 11 Z" fill="var(--outfit-2)"/>
+            <rect x="46" y="9.5" width="4" height="4" rx="1" fill="#ffffff" opacity=".7"/>
+          </g>
+        </g>
+      </svg>
+    </div>
+
+    <button class="dress-btn" id="dressBtn" title="换装" aria-label="换装：切换到下一套主题服装">🎨</button>
+    <button class="close-btn" id="closeBtn" title="隐藏精灵">✕</button>
+  </div>
+
+  <script>
+    /* sprite.js 的逻辑内联在这里：精灵窗结构简单，单独拆文件反而多一层加载。
+       真正的任务数据和排序逻辑在 panel 里的 app.js，这里只读它同步过来的结果。 */
+    (function () {
+      'use strict';
+
+      const bubble = document.getElementById('bubble');
+      const bubbleText = document.getElementById('bubbleText');
+      const bubbleLabel = document.getElementById('bubbleLabel');
+      const spriteBody = document.getElementById('spriteBody');
+      const spriteEl = document.getElementById('sprite');
+      const closeBtn = document.getElementById('closeBtn');
+
+      const LABEL_DEFAULT = '现在最该做';
+
+      /* ---------- 气泡文字 ---------- */
+
+      function setText(text) {
+        const isEmpty = !text || text === '先加一件事';
+        const newText = isEmpty ? '先加一件事' : text;
+        const changed = bubbleText.textContent !== newText;
+
+        bubbleText.textContent = newText;
+        bubble.classList.toggle('is-empty', isEmpty);
+
+        if (!changed) return; // 文字没变就不折腾动画
+
+        // 说话动画：文字变化时重播，表示「精灵在跟你讲」
+        spriteBody.classList.remove('talk');
+        void spriteBody.offsetWidth;   // 强制重排，让动画能重新触发
+        spriteBody.classList.add('talk');
+
+        bounce(); // 第一件事换了，精灵兴奋地弹一下
+      }
+
+      /* 弹一下：第一件事变化、换装等愉快时刻共用 */
+      function bounce() {
+        spriteEl.classList.remove('bounce');
+        void spriteEl.offsetWidth;
+        spriteEl.classList.add('bounce');
+      }
+
+      /* ---------- 眨眼 ----------
+         不按固定节拍眨，否则一眼就看出来是循环动画。
+         6–14 秒之间的随机间隔，看起来更像活的。 */
+      function scheduleBlink() {
+        const wait = 6000 + Math.random() * 8000;
+        setTimeout(() => {
+          spriteBody.classList.add('blink');
+          setTimeout(() => spriteBody.classList.remove('blink'), 180);
+          scheduleBlink();
+        }, wait);
+      }
+
+      /* ---------- 交互 ---------- */
+
+      // 点气泡 = 打开任务面板
+      bubble.addEventListener('click', () => {
+        if (window.priorityPal) window.priorityPal.openPanel();
+      });
+
+      // 点关闭 = 隐藏精灵（不是退出程序，托盘里还能叫回来）
+      closeBtn.addEventListener('click', (event) => {
+        event.stopPropagation();
+        if (window.priorityPal) window.priorityPal.hideSprite();
+      });
+
+      /* ---------- 拖动精灵 ----------
+         透明无边框窗口没法靠系统标题栏拖。
+         这里用「鼠标按下时的窗口位置 + 鼠标位移量」算出新位置，再交给主进程。
+         注意用 screenX/screenY（屏幕坐标），不是 clientX/clientY（窗口内坐标），
+         后者在窗口移动过程中会自己变化，用它算会抖。 */
+      let dragOrigin = null;
+
+      spriteEl.addEventListener('mousedown', (event) => {
+        if (event.button !== 0) return;
+        dragOrigin = {
+          winX: window.screenX,
+          winY: window.screenY,
+          mouseX: event.screenX,
+          mouseY: event.screenY,
+        };
+        event.preventDefault();
+      });
+
+      window.addEventListener('mousemove', (event) => {
+        if (!dragOrigin || !window.priorityPal) return;
+        const dx = event.screenX - dragOrigin.mouseX;
+        const dy = event.screenY - dragOrigin.mouseY;
+        window.priorityPal.moveSprite(dragOrigin.winX + dx, dragOrigin.winY + dy);
+      });
+
+      window.addEventListener('mouseup', () => { dragOrigin = null; });
+
+      /* ---------- 服装系统 ----------
+         精灵本色（身体/脸/眼睛/高光/气泡底色与正文色）是固定的，
+         全部定义在上方 :root 的 CSS 默认值里，换装一个都不动；
+         换装只切两样东西：
+           1. 服装造型（.outfit 加 is-on 淡入）+ 服装配色（--outfit / --outfit-2）
+           2. 气泡标签与边框色（用服装色呼应主题）
+         叶芽（草）是初始主题「玩趣明快」的专属头饰，其他主题有自己的帽子/花环。
+         注意：sprite-theme 的跨窗口联动只在同源窗口间生效（Electron 面板）；
+         网页版部署在云端域名下，与本应用不同源，收不到 storage 事件——
+         三端真正联动需要后端同步主题状态，当前未实现。 */
+      const THEME_KEY = 'sprite-theme';
+      const OUTFITS = [
+        { name: '玩趣明快', main: '#ff5c3a', sub: '#ffd23f' },
+        { name: '极致极简', main: '#555555', sub: '#9a9a9a' },
+        { name: '杂志编辑', main: '#b3402a', sub: '#2a2218' },
+        { name: '暗夜',     main: '#4a5a8a', sub: '#6ea8fe' },
+        { name: '自然有机', main: '#7a9b6d', sub: '#c8b98a' },
+        { name: '复古未来', main: '#39ff88', sub: '#00e5ff' },
+        { name: '轻奢雅致', main: '#b8923f', sub: '#e0c68a' },
+      ];
+
+      function applyTheme(idx) {
+        const outfit = OUTFITS[idx];
+        if (!outfit) return;
+        const root = document.documentElement.style;
+        root.setProperty('--outfit', outfit.main);
+        root.setProperty('--outfit-2', outfit.sub);
+        root.setProperty('--bubble-label', outfit.main);
+        root.setProperty('--bubble-line', outfit.main + '55');
+
+        // 服装淡入淡出（opacity 过渡，不瞬切）
+        document.querySelectorAll('.outfit').forEach((g) => {
+          g.classList.toggle('is-on', g.dataset.outfit === String(idx));
+        });
+
+        // 叶芽（草）只属于初始主题「玩趣明快」
+        const sproutEl = document.querySelector('.sprout');
+        if (sproutEl) sproutEl.style.display = idx === 0 ? '' : 'none';
+
+        try { localStorage.setItem(THEME_KEY, String(idx)); } catch (err) { /* 忽略 */ }
+      }
+
+      // 换装：点一下循环切到下一套服装；精灵弹一下，气泡标签短暂显示服装名
+      const dressBtn = document.getElementById('dressBtn');
+      let themeIdx = 0;
+      let labelTimer = null;
+
+      dressBtn.addEventListener('click', (event) => {
+        event.stopPropagation();
+        themeIdx = (themeIdx + 1) % OUTFITS.length;
+        applyTheme(themeIdx);
+        bounce();
+        clearTimeout(labelTimer);
+        bubbleLabel.textContent = OUTFITS[themeIdx].name;
+        labelTimer = setTimeout(() => { bubbleLabel.textContent = LABEL_DEFAULT; }, 1400);
+      });
+
+      /* ---------- 接收面板推过来的任务更新 ---------- */
+
+      if (window.priorityPal) {
+        window.priorityPal.onTaskUpdate((payload) => {
+          if (payload && typeof payload.firstTask === 'string') setText(payload.firstTask);
+        });
+
+        // 启动时主动拉一次：精灵先开、面板后开的情况下，也能拿到正确的第一件事
+        window.priorityPal.requestState().then((state) => {
+          if (state && typeof state.firstTask === 'string') setText(state.firstTask);
+        }).catch(() => { /* 面板还没开，保持默认文案 */ });
+      }
+
+      // 启动时恢复上次选的服装
+      try {
+        const saved = parseInt(localStorage.getItem(THEME_KEY) || '0', 10);
+        if (OUTFITS[saved]) themeIdx = saved;
+      } catch (err) { /* 忽略 */ }
+      applyTheme(themeIdx);
+
+      scheduleBlink();
+    })();
+  </script>
+</body>
+</html>

@@ -1,0 +1,11 @@
+# 依赖
+node_modules/
+
+# 截图与运行日志（本地调试产物，不入库）
+*.png
+*log*.txt
+*.log
+
+# 系统文件
+Thumbs.db
+.DS_Store

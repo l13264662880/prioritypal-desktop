@@ -1,0 +1,16 @@
+{
+  "name": "prioritypal-desktop",
+  "version": "0.1.0",
+  "description": "智伴 PriorityPal —— AI 智能优先级事务管理桌面陪伴助手",
+  "main": "main.js",
+  "author": "PriorityPal Team",
+  "license": "UNLICENSED",
+  "private": true,
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron . --dev"
+  },
+  "devDependencies": {
+    "electron": "^33.2.0"
+  }
+}
