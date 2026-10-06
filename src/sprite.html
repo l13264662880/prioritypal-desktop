@@ -539,6 +539,9 @@
          网页版部署在云端域名下，与本应用不同源，收不到 storage 事件——
          三端真正联动需要后端同步主题状态，当前未实现。 */
       const THEME_KEY = 'sprite-theme';
+      const API_BASE = 'https://yuanjian-d5gdhcntg91022662.service.tcloudbase.com';
+      // 服装顺序与面板 7 套主题一一对应：换装时把索引换成主题 id 同步到云端
+      const THEME_IDS = ['play', 'minimal', 'editorial', 'dark', 'nature', 'retro', 'luxe'];
       const OUTFITS = [
         { name: '玩趣明快', main: '#ff5c3a', sub: '#ffd23f' },
         { name: '极致极简', main: '#555555', sub: '#9a9a9a' },
@@ -570,6 +573,31 @@
         try { localStorage.setItem(THEME_KEY, String(idx)); } catch (err) { /* 忽略 */ }
       }
 
+      // 把主题写到云端：fire-and-forget，失败静默（离线时本地换装依然生效）
+      function syncThemeToServer(id) {
+        fetch(`${API_BASE}/api/theme`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ theme: id }),
+        }).catch(() => { /* 离线/网关异常时静默 */ });
+      }
+
+      // 从云端拉当前主题（云端 = 三端共享真相）：只启动时拉一次，不做轮询
+      function pullThemeFromServer() {
+        fetch(`${API_BASE}/api/theme`)
+          .then((r) => (r.ok ? r.json() : null))
+          .then((payload) => {
+            if (!payload || !payload.ok) return;
+            const id = payload.data && payload.data.theme;
+            const serverIdx = THEME_IDS.indexOf(id);
+            if (serverIdx >= 0 && serverIdx !== themeIdx) {
+              themeIdx = serverIdx;
+              applyTheme(themeIdx);
+            }
+          })
+          .catch(() => { /* 离线时忽略 */ });
+      }
+
       // 换装：点一下循环切到下一套服装；精灵弹一下，气泡标签短暂显示服装名
       const dressBtn = document.getElementById('dressBtn');
       let themeIdx = 0;
@@ -583,6 +611,8 @@
         clearTimeout(labelTimer);
         bubbleLabel.textContent = OUTFITS[themeIdx].name;
         labelTimer = setTimeout(() => { bubbleLabel.textContent = LABEL_DEFAULT; }, 1400);
+        // 同步到云端：网页版等其余端在下次启动时跟上
+        syncThemeToServer(THEME_IDS[themeIdx]);
       });
 
       /* ---------- 接收面板推过来的任务更新 ---------- */
@@ -598,12 +628,13 @@
         }).catch(() => { /* 面板还没开，保持默认文案 */ });
       }
 
-      // 启动时恢复上次选的服装
+      // 启动时恢复上次选的服装，再向云端对齐（云端 = 三端共享真相，最后写入者胜）
       try {
         const saved = parseInt(localStorage.getItem(THEME_KEY) || '0', 10);
         if (OUTFITS[saved]) themeIdx = saved;
       } catch (err) { /* 忽略 */ }
       applyTheme(themeIdx);
+      pullThemeFromServer();
 
       scheduleBlink();
     })();

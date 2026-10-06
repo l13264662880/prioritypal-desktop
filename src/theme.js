@@ -17,8 +17,10 @@
 (() => {
   'use strict';
 
-  const THEME_KEY = 'panel-theme';      // 面板自己选的风格
+  const THEME_KEY = 'panel-theme';      // 面板主题的本地缓存（云端才是共享真相）
   const SPRITE_KEY = 'sprite-theme';    // 精灵换装联动键
+  // 主题跨端同步的云端 API（与 app.js 同一网关）
+  const API_BASE = 'https://yuanjian-d5gdhcntg91022662.service.tcloudbase.com';
 
   /* 七套风格：id 对应 data-theme，swatch 给选择器画色块预览 */
   const STYLES = [
@@ -38,10 +40,35 @@
   function applyStyle(id) {
     const style = styleById(id);
     document.documentElement.setAttribute('data-theme', style.id);
+    // 写本地缓存：下次启动的「上一刻主题」立即可见（防闪烁）；云端才是共享真相
+    try { localStorage.setItem(THEME_KEY, id); } catch (err) { /* 忽略 */ }
     // 调色板按钮上的小色点：一眼看出当前是哪套
     const dot = document.querySelector('.theme-toggle .theme-dot');
     if (dot) dot.style.background = style.swatch[0];
     syncMenu(style.id);
+  }
+
+  // 把主题写到云端：fire-and-forget，失败静默（离线时本地选择依然生效）
+  function syncThemeToServer(id) {
+    fetch(`${API_BASE}/api/theme`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ theme: id }),
+    }).catch(() => { /* 离线/网关异常时静默 */ });
+  }
+
+  // 从云端拉当前主题（云端 = 三端共享真相，「最后写入者胜」）：
+  // 只在启动时拉一次，不做轮询——免费版资源点扛不住轮询频率。
+  // 其他端改了主题时，本端刷新页面即可同步；实时推送是后续课题。
+  function pullThemeFromServer() {
+    fetch(`${API_BASE}/api/theme`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((payload) => {
+        if (!payload || !payload.ok) return;
+        const id = payload.data && payload.data.theme;
+        if (id && styleById(id).id === id) applyStyle(id);
+      })
+      .catch(() => { /* 离线时忽略 */ });
   }
 
   /* 读启动风格：panel-theme > sprite-theme（映射）> play */
@@ -94,8 +121,8 @@
       const opt = event.target.closest('.theme-option');
       if (!opt) return;
       const id = opt.dataset.theme;
-      try { localStorage.setItem(THEME_KEY, id); } catch (err) { /* 忽略 */ }
-      applyStyle(id);
+      applyStyle(id);          // 立即生效 + 写本地缓存
+      syncThemeToServer(id);   // 同步到云端，其他端下次启动时跟上
       close();
     });
 
@@ -112,19 +139,17 @@
     });
   }
 
-  // 启动：应用当前风格 + 绑定选择器
+  // 启动：先应用本地缓存的主题（防闪烁）+ 绑定选择器，再异步向云端对齐（云端优先）
   applyStyle(readStyle());
   initPicker();
+  pullThemeFromServer();
 
-  // 精灵换装 → storage 事件跨窗口触发。只在用户没手动选过时跟随。
+  // 精灵换装 → storage 事件跨窗口触发 → 面板跟着换（精灵换装 = 最后写入，必须跟随）。
   // ⚠️ 局限：storage 事件只在同源窗口间触发。Electron 面板与本应用同源时有效；
   // 网页版部署在云端域名下时，与本地 Electron 不同源，此联动收不到——
-  // 三端真正联动需要后端同步主题状态，当前未实现。
+  // 三端真正联动走云端 /api/theme（applyStyle / 换装处已接入）。
   window.addEventListener('storage', (event) => {
     if (event.key !== SPRITE_KEY) return;
-    let own = false;
-    try { own = !!localStorage.getItem(THEME_KEY); } catch (err) { /* 忽略 */ }
-    if (own) return;
     const idx = parseInt(event.newValue, 10);
     if (!Number.isNaN(idx) && idx >= 0) {
       applyStyle(STYLES[idx % STYLES.length].id);
