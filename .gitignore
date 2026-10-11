@@ -9,3 +9,6 @@ node_modules/
 # 系统文件
 Thumbs.db
 .DS_Store
+
+# 游戏素材 PNG 不在忽略之列（仅排除截图类，见上方 *.png）
+!assets/**/*.png
