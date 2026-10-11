@@ -2,718 +2,454 @@
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8" />
-  <title>PriorityPal 精灵</title>
+  <title>PriorityPal 小猫桌宠</title>
   <style>
-    /* 精灵各部位颜色都用 CSS 变量驱动，方便「换装」——
-       换一套主题就是换一组变量的值，SVG 和气泡的 fill/color 全部 var() 引用。
-       默认是「奶黄包」主题，JS 里可以切到别的主题。 */
+    /* ============ 拟人小猫桌宠 · 分层换装 ============
+       渲染层级（避免穿模）：本体 → 尾巴 → 下装 → 上衣 → 鞋子 → 头部配饰 → 背饰 → 手持物
+       所有层都是 96×104 画布内联 SVG 组，透明背景，按 order 叠放。
+       动画只作用于小猫本体（呼吸/眨眼/弹跳），服装层只做淡入淡出。 */
     :root {
-      /* 拟人本体肤色（身体/四肢），头发与鞋是固定色 */
-      --body-top: #ffead2;
-      --body-bottom: #f8d2a8;
-      --limb: #f7cda3;
-      --hair: #6f4a32;
-      --sprout-a: #7bc96f;
-      --sprout-b: #96d98a;
-      --sprout-stem: #66b85a;
-      --eye: #4a3525;
-      --blush: rgba(247, 130, 120, .5);
-      --face: #fffdf6;
-      --glow: rgba(255, 255, 255, .4);
-      --shadow: rgba(150, 110, 40, .16);
+      --fur: #fff8eb;        /* 奶白毛色 */
+      --fur-shade: #f3e7cd;
+      --line: #6e543e;       /* 深棕描边 */
+      --pink: #ffb6b2;
       --bubble-bg: #fffdf8;
-      --bubble-line: rgba(255, 92, 58, .35);
-      --bubble-text: #332b23;
+      --bubble-line: rgba(255, 143, 92, .4);
+      --bubble-text: #3a3128;
       --bubble-label: #ff5c3a;
-      --close-bg: rgba(180, 130, 40, .14);
-      --close-fg: #b89a5e;
-      --close-hover-bg: rgba(247, 160, 150, .22);
-      --close-hover-fg: #e08a6a;
+      --btn-bg: rgba(110, 84, 62, .16);
+      --btn-fg: #8a7052;
     }
-
-    /* 精灵窗是透明无边框的，所以：
-       · html/body 必须完全透明，否则会是一个白色方块
-       · 任何地方都不能出现不透明的大面积背景
-       · 圆角/阴影只加在精灵本体上 */
     html, body {
-      margin: 0;
-      padding: 0;
-      width: 100%;
-      height: 100%;
-      background: transparent !important;
-      overflow: hidden;
-      /* 整窗可拖动。但按钮要能点，后面用 no-drag 单独豁免 */
-      -webkit-app-region: drag;
-      user-select: none;
-      font-family: "Songti SC", "STSong", "SimSun", "Noto Serif SC", serif;
+      margin: 0; padding: 0; width: 100%; height: 100%;
+      background: transparent !important; overflow: hidden;
+      -webkit-app-region: drag; user-select: none;
+      font-family: "Microsoft YaHei", sans-serif;
     }
-
     .stage {
-      position: relative;
-      width: 100%;
-      height: 100%;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: flex-end;
-      padding-bottom: 6px;
+      position: relative; width: 100%; height: 100%;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: flex-end; padding-bottom: 4px;
     }
-
-    /* 气泡：显示「现在最该做的一件事」。
-       这是整个精灵的存在意义 —— 它不只是一个装饰摆件。
-
-       宽度与行数都必须锁死：
-         桌面常驻的小窗口，被一条长任务撑成三行会挡住底下的东西，
-         而且精灵本身会被挤变形。这里固定两行、超出截断加省略号。 */
     .bubble {
-      position: relative;
-      width: 188px;              /* 固定宽，不随内容伸缩 */
-      box-sizing: border-box;
-      margin-bottom: 8px;
-      padding: 9px 13px;
-      background: var(--bubble-bg);
-      border: 1px solid var(--bubble-line);
-      border-radius: 8px;
-      box-shadow: 0 2px 8px var(--shadow);
-      color: var(--bubble-text);
-      font-size: 13px;
-      line-height: 1.5;
-      letter-spacing: .02em;
-      text-align: center;
-      cursor: pointer;
-      -webkit-app-region: no-drag;   /* 气泡可点，不参与拖动 */
-      transition: transform 300ms cubic-bezier(.4, 0, .2, 1);
+      position: relative; width: 188px; box-sizing: border-box;
+      margin-bottom: 6px; padding: 8px 12px;
+      background: var(--bubble-bg); border: 1px solid var(--bubble-line);
+      border-radius: 8px; box-shadow: 0 2px 8px rgba(110,84,62,.18);
+      color: var(--bubble-text); font-size: 13px; line-height: 1.5;
+      text-align: center; cursor: pointer; -webkit-app-region: no-drag;
+      transition: transform .3s;
     }
     .bubble:hover { transform: translateY(-1px); }
-
-    /* 气泡下面的小尖角 */
     .bubble::after {
-      content: "";
-      position: absolute;
-      left: 50%;
-      bottom: -6px;
-      width: 10px;
-      height: 10px;
-      margin-left: -5px;
+      content: ""; position: absolute; left: 50%; bottom: -6px;
+      width: 10px; height: 10px; margin-left: -5px;
       background: var(--bubble-bg);
-      border-right: 1px solid var(--bubble-line);
-      border-bottom: 1px solid var(--bubble-line);
+      border-right: 1px solid var(--bubble-line); border-bottom: 1px solid var(--bubble-line);
       transform: rotate(45deg);
     }
-
-    /* 气泡里那行「现在最该做」的小标签 */
     .bubble-label {
-      display: block;
-      margin-bottom: 3px;
-      font-size: 10px;
-      letter-spacing: .18em;
-      color: var(--bubble-label);
+      display: block; margin-bottom: 2px; font-size: 10px;
+      letter-spacing: .16em; color: var(--bubble-label);
     }
     .bubble-text {
-      display: -webkit-box;
-      -webkit-line-clamp: 2;        /* 最多两行 */
-      -webkit-box-orient: vertical;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      word-break: break-word;
-      min-height: 1.5em;
+      display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+      overflow: hidden; text-overflow: ellipsis; word-break: break-word; min-height: 1.5em;
     }
-    .bubble.is-empty .bubble-text { color: var(--close-fg); }
-
-    /* 精灵本体 */
-    .sprite {
-      position: relative;
-      width: 96px;
-      height: 104px;
-      cursor: grab;
-    }
+    .sprite { position: relative; width: 96px; height: 104px; cursor: grab; }
     .sprite:active { cursor: grabbing; }
+    .sprite svg { display: block; width: 100%; height: 100%; overflow: visible; }
 
-    .sprite svg {
-      display: block;
-      width: 100%;
-      height: 100%;
-      overflow: visible;
-    }
-
-    /* 呼吸：极缓慢的上下浮动，代表「活着」。
-       幅度必须小 —— 桌面上常驻的东西动作一大就变骚扰。 */
-    .sprite-body {
-      animation: breathe 4.2s ease-in-out infinite;
-      transform-origin: 50% 100%;
-    }
+    /* 呼吸：待机的轻微晃动，幅度小（常驻不骚扰） */
+    .sprite-body { animation: breathe 4.2s ease-in-out infinite; transform-origin: 48px 96px; }
     @keyframes breathe {
       0%, 100% { transform: translateY(0); }
-      50%      { transform: translateY(-4px); }
+      50%      { transform: translateY(-2.5px); }
     }
-
-    /* 叶芽（呆毛）随风轻摆：周期长、幅度小，只在头顶悄悄动一下 */
-    .sprout {
-      animation: sway 3.8s ease-in-out infinite;
-      transform-origin: 48px 8px;
-    }
-    @keyframes sway {
-      0%, 100% { transform: rotate(-4deg); }
-      50%      { transform: rotate(4deg); }
-    }
-
-    /* 服装层：默认透明，当前套加 is-on 淡入（用 opacity 而非 display，才能做过渡） */
-    .outfit { opacity: 0; transition: opacity 280ms cubic-bezier(.16, 1, .3, 1); pointer-events: none; }
-    .outfit.is-on { opacity: 1; pointer-events: auto; }
-
-    /* 精灵本体：悬停时轻轻放大一点，像「注意到你了」 */
-    .sprite { transition: transform 220ms cubic-bezier(.4, 0, .2, 1); }
+    /* 眨眼 / 睡觉 / 专注：本体的四种帧组，显示其一 */
+    .frame { display: none; }
+    .frame.is-on { display: inline; }
+    /* 尾巴轻摆 */
+    .tail-wag { animation: wag 3.4s ease-in-out infinite; transform-origin: 66px 82px; }
+    @keyframes wag { 0%,100% { transform: rotate(-6deg);} 50% { transform: rotate(8deg);} }
+    /* 服装层淡入淡出 */
+    .outfit { opacity: 0; transition: opacity .28s; pointer-events: none; }
+    .outfit.is-on { opacity: 1; }
+    /* 悬停微微放大：注意到你了 */
+    .sprite { transition: transform .22s; }
     .sprite:hover { transform: scale(1.04); }
-
-    /* 弹跳：第一件事变化时由 JS 加一次 bounce 类。
-       用 scale 而不是 translateY，跟 breathe 的浮动不冲突 */
-    .sprite.bounce {
-      animation: bounce 540ms cubic-bezier(.34, 1.56, .64, 1);
-    }
+    /* 开心弹跳 */
+    .sprite.bounce { animation: bounce .54s cubic-bezier(.34,1.56,.64,1); }
     @keyframes bounce {
-      0%, 100% { transform: scale(1); }
-      35%      { transform: scale(1.08, 1.12); }
-      70%      { transform: scale(.96, .95); }
+      0%,100% { transform: scale(1); }
+      35% { transform: scale(1.08,1.12); }
+      70% { transform: scale(.96,.95); }
     }
-
-    /* 眨眼：随机间隔由 JS 控制，这里只管动一下 */
-    .eye { animation: none; }
-    .sprite-body.blink .eye {
-      animation: blink 160ms ease-in-out;
+    /* 右键换装菜单 */
+    .ctx {
+      position: fixed; display: none; z-index: 99;
+      background: var(--bubble-bg); border: 1px solid var(--bubble-line);
+      border-radius: 8px; box-shadow: 0 4px 14px rgba(110,84,62,.25);
+      padding: 4px; min-width: 132px; -webkit-app-region: no-drag;
     }
-    @keyframes blink {
-      0%, 100% { transform: scaleY(1); }
-      50%      { transform: scaleY(.08); }
+    .ctx .item {
+      display: block; width: 100%; text-align: left; border: none; background: none;
+      padding: 6px 10px; font-size: 12.5px; color: var(--bubble-text);
+      cursor: pointer; border-radius: 5px; font-family: inherit;
     }
-
-    /* 说话：气泡出现时轻轻弹一下 */
-    .sprite-body.talk .mouth {
-      animation: talk 420ms ease-in-out;
+    .ctx .item:hover { background: rgba(255,143,92,.14); }
+    .ctx .group { position: relative; }
+    .ctx .group > .item::after { content: "▸"; float: right; color: var(--btn-fg); }
+    .ctx .sub {
+      display: none; position: absolute; left: 100%; top: -5px;
+      background: var(--bubble-bg); border: 1px solid var(--bubble-line);
+      border-radius: 8px; padding: 4px; min-width: 118px; max-height: 260px; overflow-y: auto;
     }
-    @keyframes talk {
-      0%, 100% { transform: scaleY(1); }
-      50%      { transform: scaleY(1.9); }
+    .ctx .group:hover > .sub { display: block; }
+    /* 关闭/换装按钮：hover 才出现 */
+    .win-btn {
+      position: absolute; top: 2px; width: 20px; height: 20px;
+      display: grid; place-items: center; border: none; border-radius: 50%;
+      background: var(--btn-bg); color: var(--btn-fg); font-size: 11px;
+      cursor: pointer; opacity: 0; transition: opacity .2s; -webkit-app-region: no-drag;
     }
-
-    /* 关闭按钮：鼠标移上去才出现，平时不占视觉 */
-    .close-btn {
-      position: absolute;
-      top: 4px;
-      right: 6px;
-      width: 20px;
-      height: 20px;
-      display: grid;
-      place-items: center;
-      border: none;
-      border-radius: 50%;
-      background: var(--close-bg);
-      color: var(--close-fg);
-      font-size: 12px;
-      line-height: 1;
-      cursor: pointer;
-      opacity: 0;
-      transition: opacity 200ms ease;
-      -webkit-app-region: no-drag;
-      font-family: "Segoe UI Symbol", system-ui, sans-serif;
-    }
-    .stage:hover .close-btn { opacity: 1; }
-    .close-btn:hover { background: var(--close-hover-bg); color: var(--close-hover-fg); }
-
-    /* 换装按钮：放在关闭按钮左边，鼠标移上去才出现 */
-    .dress-btn {
-      position: absolute;
-      top: 4px;
-      right: 30px;
-      width: 20px;
-      height: 20px;
-      display: grid;
-      place-items: center;
-      border: none;
-      border-radius: 50%;
-      background: var(--close-bg);
-      font-size: 11px;
-      line-height: 1;
-      cursor: pointer;
-      opacity: 0;
-      transition: opacity 200ms ease;
-      -webkit-app-region: no-drag;
-    }
-    .stage:hover .dress-btn { opacity: 1; }
-    .dress-btn:hover { background: var(--close-hover-bg); }
-
-    /* 尊重系统「减少动态效果」 */
+    .stage:hover .win-btn { opacity: 1; }
+    .win-btn:hover { background: rgba(255,143,92,.24); }
+    #dressBtn { right: 28px; } #closeBtn { right: 4px; }
     @media (prefers-reduced-motion: reduce) {
-      .sprite-body, .eye, .mouth { animation: none !important; }
+      .sprite-body, .tail-wag { animation: none !important; }
     }
   </style>
 </head>
 <body>
   <div class="stage" id="stage">
-
-    <!-- 说话气泡：显示当前「第一件事」。点它打开任务面板 -->
     <div class="bubble" id="bubble" title="点击打开任务面板">
       <span class="bubble-label" id="bubbleLabel">现在最该做</span>
       <span class="bubble-text" id="bubbleText">先加一件事</span>
     </div>
 
-    <!-- 精灵本体：Q 版形象，纯内联 SVG，不依赖任何外部图片 -->
     <div class="sprite" id="sprite">
       <svg viewBox="0 0 96 104" xmlns="http://www.w3.org/2000/svg">
         <defs>
-          <!-- 身体渐变：基础肤色 -->
-          <linearGradient id="bodyGrad" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0" stop-color="var(--body-top)" />
-            <stop offset="1" stop-color="var(--body-bottom)" />
+          <linearGradient id="furGrad" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" stop-color="var(--fur)"/>
+            <stop offset="1" stop-color="var(--fur-shade)"/>
           </linearGradient>
-          <!-- 头部渐变：比身体略亮一档，视觉焦点在脸上 -->
-          <linearGradient id="headGrad" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0" stop-color="#fff1dd" />
-            <stop offset="1" stop-color="var(--body-bottom)" />
-          </linearGradient>
-          <!-- 衣服明暗叠加：上亮下暗，模拟面料立体感 -->
-          <linearGradient id="clothShade" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0" stop-color="#ffffff" stop-opacity="0.22"/>
-            <stop offset="0.5" stop-color="#ffffff" stop-opacity="0"/>
-            <stop offset="1" stop-color="#000000" stop-opacity="0.18"/>
-          </linearGradient>
-          <!-- 衣服投影：让衣服像浮在身体上，有厚度 -->
-          <filter id="clothShadow" x="-30%" y="-30%" width="160%" height="160%">
-            <feDropShadow dx="0" dy="3" stdDeviation="3" flood-color="#000000" flood-opacity="0.22"/>
-          </filter>
         </defs>
+        <ellipse cx="48" cy="99" rx="20" ry="3.6" fill="rgba(110,84,62,.15)"/>
+
         <g class="sprite-body" id="spriteBody">
-          <!-- 脚下投影 -->
-          <ellipse cx="48" cy="100" rx="26" ry="4.5" fill="var(--shadow)" />
-
-          <!-- ================= 拟人本体：Q 版三头身小帮手 ================= -->
-          <!-- 层序：腿 → 身体/手 → 服装 → 头(脸) → 头发 → 呆毛豆芽 → 五官 → 鞋 -->
-
-          <!-- 两条小腿 -->
-          <ellipse cx="41" cy="86" rx="4.8" ry="9" fill="var(--limb)" />
-          <ellipse cx="55" cy="86" rx="4.8" ry="9" fill="var(--limb)" />
-
-          <!-- 身体（基础肤色，平时被服装盖住）+ 两只手臂 -->
-          <path d="M38 52 C 35.5 62, 34.5 74, 36.5 84 L 59.5 84 C 61.5 74, 60.5 62, 58 52 Q 48 57 38 52 Z" fill="url(#bodyGrad)" />
-          <ellipse cx="31.5" cy="65" rx="4.6" ry="10" fill="var(--limb)" transform="rotate(12 31.5 65)" />
-          <ellipse cx="64.5" cy="65" rx="4.6" ry="10" fill="var(--limb)" transform="rotate(-12 64.5 65)" />
-
-          <!-- 服装层：11 套（数据 outfit=0..10），套在新身体上 -->
-
-          <!-- 0 玩趣明快：珊瑚橙背带裙 + 蝴蝶结 -->
-          <g class="outfit" data-outfit="0">
-            <path d="M36 56 C 33 67, 32 78, 34 86 L 62 86 C 64 78, 63 67, 60 56 Q 48 61 36 56 Z" fill="var(--outfit)" filter="url(#clothShadow)"/>
-            <path d="M36 56 C 33 67, 32 78, 34 86 L 62 86 C 64 78, 63 67, 60 56 Q 48 61 36 56 Z" fill="url(#clothShade)"/>
-            <path d="M40 56 L 41 50 M 56 56 L 55 50" stroke="var(--outfit)" stroke-width="3" stroke-linecap="round"/>
-            <circle cx="41" cy="50" r="1.8" fill="var(--outfit-2)"/>
-            <circle cx="55" cy="50" r="1.8" fill="var(--outfit-2)"/>
-            <rect x="41" y="74" width="14" height="6" rx="3" fill="var(--outfit-2)" opacity=".45"/>
-            <path d="M45 8 C 38 1 27 0 23 5 C 19 10 29 15 36 11 C 41 9 44 8 45 8 Z" fill="var(--outfit)"/>
-            <path d="M43 8 C 38 3 30 2 27 5 C 25 7 28 10 32 10 C 36 9 41 8 43 8 Z" fill="var(--outfit-2)" opacity=".55"/>
-            <path d="M51 8 C 58 1 69 0 73 5 C 77 10 67 15 60 11 C 55 9 52 8 51 8 Z" fill="var(--outfit)"/>
-            <path d="M53 8 C 58 3 66 2 69 5 C 71 7 68 10 64 10 C 60 9 55 8 53 8 Z" fill="var(--outfit-2)" opacity=".55"/>
-            <path d="M47 11 Q 44 17 46 21 Q 48 23 50 21 Q 52 17 51 11 Z" fill="var(--outfit)"/>
-            <path d="M53 11 Q 56 17 54 21 Q 52 23 50 21 Q 48 17 49 11 Z" fill="var(--outfit)" opacity=".8"/>
-            <ellipse cx="50" cy="8" rx="5" ry="3.6" fill="var(--outfit-2)"/>
-            <ellipse cx="48.5" cy="6.5" rx="1.8" ry="1.3" fill="#ffffff" opacity=".55"/>
+          <!-- ===== 层 1：本体（四帧组，display 切换） ===== -->
+          <!-- idle 帧 -->
+          <g class="frame is-on" data-frame="idle">
+            <ellipse cx="34" cy="9" rx="7" ry="6.5" fill="var(--fur)" stroke="var(--line)" stroke-width="1.6"/>
+            <ellipse cx="62" cy="9" rx="7" ry="6.5" fill="var(--fur)" stroke="var(--line)" stroke-width="1.6"/>
+            <ellipse cx="34" cy="10" rx="3.4" ry="3" fill="var(--pink)" opacity=".8"/>
+            <ellipse cx="62" cy="10" rx="3.4" ry="3" fill="var(--pink)" opacity=".8"/>
+            <circle cx="48" cy="25" r="16.5" fill="url(#furGrad)" stroke="var(--line)" stroke-width="1.6"/>
+            <path d="M31 24 C 32 13, 40 9, 48 9 C 56 9, 64 13, 65 24 C 60 19, 54 17, 48 17 C 42 17, 36 19, 31 24 Z" fill="var(--fur)" opacity=".6"/>
+            <ellipse cx="41.5" cy="26" rx="3" ry="3.8" fill="var(--line)"/>
+            <ellipse cx="54.5" cy="26" rx="3" ry="3.8" fill="var(--line)"/>
+            <circle cx="42.5" cy="24.6" r="1.1" fill="#fff"/>
+            <circle cx="55.5" cy="24.6" r="1.1" fill="#fff"/>
+            <path d="M46.6 31 L 49.4 31 L 48 32.6 Z" fill="var(--pink)"/>
+            <path d="M45.5 34.5 Q 48 36.5 50.5 34.5" stroke="var(--line)" stroke-width="1.2" fill="none" stroke-linecap="round"/>
+            <ellipse cx="37" cy="30" rx="2.6" ry="1.5" fill="var(--pink)" opacity=".6"/>
+            <ellipse cx="59" cy="30" rx="2.6" ry="1.5" fill="var(--pink)" opacity=".6"/>
+            <path d="M28 27 L 34 28.5 M 28 31 L 34 30.5" stroke="var(--line)" stroke-width=".8" opacity=".55"/>
+            <path d="M68 27 L 62 28.5 M 68 31 L 62 30.5" stroke="var(--line)" stroke-width=".8" opacity=".55"/>
+            <path d="M41 44 C 38 52, 37.5 62, 39 72 L 57 72 C 58.5 62, 58 52, 55 44 Q 48 47 41 44 Z" fill="url(#furGrad)" stroke="var(--line)" stroke-width="1.6"/>
+            <path d="M40 50 C 36 56, 34 63, 34.5 69" stroke="var(--fur)" stroke-width="4.6" fill="none" stroke-linecap="round"/>
+            <path d="M56 50 C 60 56, 62 63, 61.5 69" stroke="var(--fur)" stroke-width="4.6" fill="none" stroke-linecap="round"/>
+            <path d="M43 74 C 42.6 82, 42.4 88, 42.4 92.5" stroke="var(--fur)" stroke-width="7" fill="none" stroke-linecap="round"/>
+            <path d="M53 74 C 53.4 82, 53.6 88, 53.6 92.5" stroke="var(--fur)" stroke-width="7" fill="none" stroke-linecap="round"/>
+          </g>
+          <!-- blink 帧：眼睛闭成弧线 -->
+          <g class="frame" data-frame="blink">
+            <ellipse cx="34" cy="9" rx="7" ry="6.5" fill="var(--fur)" stroke="var(--line)" stroke-width="1.6"/>
+            <ellipse cx="62" cy="9" rx="7" ry="6.5" fill="var(--fur)" stroke="var(--line)" stroke-width="1.6"/>
+            <circle cx="48" cy="25" r="16.5" fill="url(#furGrad)" stroke="var(--line)" stroke-width="1.6"/>
+            <path d="M37.5 26 Q 41.5 29 45.5 26" stroke="var(--line)" stroke-width="1.6" fill="none" stroke-linecap="round"/>
+            <path d="M50.5 26 Q 54.5 29 58.5 26" stroke="var(--line)" stroke-width="1.6" fill="none" stroke-linecap="round"/>
+            <path d="M46.6 31 L 49.4 31 L 48 32.6 Z" fill="var(--pink)"/>
+            <path d="M45.5 34.5 Q 48 36.5 50.5 34.5" stroke="var(--line)" stroke-width="1.2" fill="none" stroke-linecap="round"/>
+            <ellipse cx="37" cy="30" rx="2.6" ry="1.5" fill="var(--pink)" opacity=".6"/>
+            <ellipse cx="59" cy="30" rx="2.6" ry="1.5" fill="var(--pink)" opacity=".6"/>
+            <path d="M41 44 C 38 52, 37.5 62, 39 72 L 57 72 C 58.5 62, 58 52, 55 44 Q 48 47 41 44 Z" fill="url(#furGrad)" stroke="var(--line)" stroke-width="1.6"/>
+            <path d="M40 50 C 36 56, 34 63, 34.5 69" stroke="var(--fur)" stroke-width="4.6" fill="none" stroke-linecap="round"/>
+            <path d="M56 50 C 60 56, 62 63, 61.5 69" stroke="var(--fur)" stroke-width="4.6" fill="none" stroke-linecap="round"/>
+            <path d="M43 74 C 42.6 82, 42.4 88, 42.4 92.5" stroke="var(--fur)" stroke-width="7" fill="none" stroke-linecap="round"/>
+            <path d="M53 74 C 53.4 82, 53.6 88, 53.6 92.5" stroke="var(--fur)" stroke-width="7" fill="none" stroke-linecap="round"/>
+          </g>
+          <!-- sleep 帧：闭眼张嘴打哈欠 -->
+          <g class="frame" data-frame="sleep">
+            <ellipse cx="34" cy="9" rx="7" ry="6.5" fill="var(--fur)" stroke="var(--line)" stroke-width="1.6"/>
+            <ellipse cx="62" cy="9" rx="7" ry="6.5" fill="var(--fur)" stroke="var(--line)" stroke-width="1.6"/>
+            <circle cx="48" cy="26" r="16.5" fill="url(#furGrad)" stroke="var(--line)" stroke-width="1.6"/>
+            <path d="M37.5 28 Q 41.5 31 45.5 28" stroke="var(--line)" stroke-width="1.6" fill="none" stroke-linecap="round"/>
+            <path d="M50.5 28 Q 54.5 31 58.5 28" stroke="var(--line)" stroke-width="1.6" fill="none" stroke-linecap="round"/>
+            <path d="M46.5 32 L 49.5 32 L 48 34 Z" fill="var(--pink)"/>
+            <ellipse cx="48" cy="36.5" rx="2" ry="2.6" fill="var(--line)" opacity=".8"/>
+            <ellipse cx="36" cy="31.5" rx="2.6" ry="1.5" fill="var(--pink)" opacity=".7"/>
+            <ellipse cx="60" cy="31.5" rx="2.6" ry="1.5" fill="var(--pink)" opacity=".7"/>
+            <path d="M41 44 C 38 52, 37.5 62, 39 72 L 57 72 C 58.5 62, 58 52, 55 44 Q 48 47 41 44 Z" fill="url(#furGrad)" stroke="var(--line)" stroke-width="1.6"/>
+            <path d="M40 52 C 37 58, 35.5 64, 36 69" stroke="var(--fur)" stroke-width="4.6" fill="none" stroke-linecap="round"/>
+            <path d="M56 52 C 59 58, 60.5 64, 60 69" stroke="var(--fur)" stroke-width="4.6" fill="none" stroke-linecap="round"/>
+            <path d="M43 74 C 42.6 82, 42.4 88, 42.4 92.5" stroke="var(--fur)" stroke-width="7" fill="none" stroke-linecap="round"/>
+            <path d="M53 74 C 53.4 82, 53.6 88, 53.6 92.5" stroke="var(--fur)" stroke-width="7" fill="none" stroke-linecap="round"/>
+          </g>
+          <!-- focus 帧：抿嘴认真 + 眉毛 -->
+          <g class="frame" data-frame="focus">
+            <ellipse cx="34" cy="9" rx="7" ry="6.5" fill="var(--fur)" stroke="var(--line)" stroke-width="1.6"/>
+            <ellipse cx="62" cy="9" rx="7" ry="6.5" fill="var(--fur)" stroke="var(--line)" stroke-width="1.6"/>
+            <circle cx="48" cy="25" r="16.5" fill="url(#furGrad)" stroke="var(--line)" stroke-width="1.6"/>
+            <path d="M37 20.5 Q 41.5 18.8 46 20.3" stroke="var(--line)" stroke-width="1.4" fill="none" stroke-linecap="round"/>
+            <path d="M50 20.3 Q 54.5 18.8 59 20.5" stroke="var(--line)" stroke-width="1.4" fill="none" stroke-linecap="round"/>
+            <ellipse cx="41.5" cy="26" rx="3" ry="3.8" fill="var(--line)"/>
+            <ellipse cx="54.5" cy="26" rx="3" ry="3.8" fill="var(--line)"/>
+            <circle cx="42.5" cy="24.6" r="1.1" fill="#fff"/>
+            <circle cx="55.5" cy="24.6" r="1.1" fill="#fff"/>
+            <path d="M46.6 31 L 49.4 31 L 48 32.6 Z" fill="var(--pink)"/>
+            <path d="M45 35 L 51 35" stroke="var(--line)" stroke-width="1.4" stroke-linecap="round"/>
+            <path d="M41 44 C 38 52, 37.5 62, 39 72 L 57 72 C 58.5 62, 58 52, 55 44 Q 48 47 41 44 Z" fill="url(#furGrad)" stroke="var(--line)" stroke-width="1.6"/>
+            <path d="M40 50 L 44 54 L 40 56" stroke="var(--fur)" stroke-width="4.6" fill="none" stroke-linecap="round"/>
+            <path d="M56 50 L 52 54 L 56 56" stroke="var(--fur)" stroke-width="4.6" fill="none" stroke-linecap="round"/>
+            <path d="M43 74 C 42.6 82, 42.4 88, 42.4 92.5" stroke="var(--fur)" stroke-width="7" fill="none" stroke-linecap="round"/>
+            <path d="M53 74 C 53.4 82, 53.6 88, 53.6 92.5" stroke="var(--fur)" stroke-width="7" fill="none" stroke-linecap="round"/>
           </g>
 
-          <!-- 1 极致极简：素灰连衣裙 + 围巾 -->
-          <g class="outfit" data-outfit="1">
-            <path d="M36 56 C 33 67, 32 78, 34 86 L 62 86 C 64 78, 63 67, 60 56 Q 48 61 36 56 Z" fill="var(--outfit)" filter="url(#clothShadow)"/>
-            <path d="M36 56 C 33 67, 32 78, 34 86 L 62 86 C 64 78, 63 67, 60 56 Q 48 61 36 56 Z" fill="url(#clothShade)"/>
-            <path d="M38 58 Q 48 64 58 58 L 58 63 Q 48 69 38 63 Z" fill="var(--outfit-2)"/>
+          <!-- ===== 层 2：尾巴（身体后侧，随待机轻摆） ===== -->
+          <g class="tail-wag">
+            <path d="M62 78 C 72 80, 80 74, 81 64 C 81.6 58, 78 54, 74 55" stroke="var(--fur)" stroke-width="7" fill="none" stroke-linecap="round"/>
+            <circle cx="74" cy="55" r="3.6" fill="var(--pink)" opacity=".85"/>
           </g>
 
-          <!-- 2 杂志编辑：朱砂连衣裙白领 + 贝雷帽 -->
-          <g class="outfit" data-outfit="2">
-            <path d="M36 56 C 33 67, 32 78, 34 86 L 62 86 C 64 78, 63 67, 60 56 Q 48 61 36 56 Z" fill="var(--outfit)" filter="url(#clothShadow)"/>
-            <path d="M36 56 C 33 67, 32 78, 34 86 L 62 86 C 64 78, 63 67, 60 56 Q 48 61 36 56 Z" fill="url(#clothShade)"/>
-            <path d="M41 56 L 48 64 L 55 56 Q 48 60 41 56 Z" fill="#ffffff" opacity=".85"/>
-            <path d="M44.5 59 L 40 56.5 L 40 62 Z" fill="var(--outfit-2)"/>
-            <path d="M51.5 59 L 56 56.5 L 56 62 Z" fill="var(--outfit-2)"/>
-            <circle cx="48" cy="62" r="2" fill="var(--outfit)"/>
-            <circle cx="48" cy="70" r="1.4" fill="var(--outfit-2)"/>
-            <circle cx="48" cy="77" r="1.4" fill="var(--outfit-2)"/>
-            <path d="M26 14 Q 31 3 48 3 Q 65 3 70 14 Q 64 10 48 10 Q 32 10 26 14 Z" fill="var(--outfit)"/>
-            <path d="M36 9 Q 43 5 50 5" stroke="#ffffff" stroke-width="2" fill="none" opacity=".4" stroke-linecap="round"/>
-            <path d="M25 14 Q 48 20 71 14 Q 71 17 48 22 Q 25 17 25 14 Z" fill="var(--outfit-2)"/>
-            <circle cx="48" cy="4" r="2.3" fill="var(--outfit-2)"/>
+          <!-- ===== 层 3-8：服装（8 套主题 × 6 部位，JS 按穿搭配置切 is-on） ===== -->
+          <!-- daily 日常休闲 -->
+          <g class="outfit" data-theme="daily">
+            <g data-slot="bottom">
+              <path d="M39 70 L 57 70 L 59 84 L 51.5 84 L 48 76 L 44.5 84 L 37 84 Z" fill="#5e81ac" stroke="var(--line)" stroke-width="1.3"/>
+            </g>
+            <g data-slot="top">
+              <path d="M39 43 C 37.5 52, 37.5 62, 39 71 L 57 71 C 58.5 62, 58.5 52, 57 43 Q 48 46.5 39 43 Z" fill="#ffecc0" stroke="var(--line)" stroke-width="1.3"/>
+              <path d="M45 44 L 48 48 L 51 44" stroke="#e8b34a" stroke-width="1.4" fill="none"/>
+              <rect x="44" y="68" width="8" height="3" rx="1.5" fill="#e8b34a" opacity=".7"/>
+            </g>
+            <g data-slot="shoes">
+              <ellipse cx="42.4" cy="94.5" rx="6" ry="3.4" fill="#f5f5f5" stroke="var(--line)" stroke-width="1.2"/>
+              <ellipse cx="53.6" cy="94.5" rx="6" ry="3.4" fill="#f5f5f5" stroke="var(--line)" stroke-width="1.2"/>
+            </g>
+            <g data-slot="hand">
+              <path d="M64 62 L 76 62 L 74 74 L 66 74 Z" fill="#d69e6a" stroke="var(--line)" stroke-width="1.2"/>
+              <path d="M63 60 L 77 60" stroke="var(--line)" stroke-width="2.4" stroke-linecap="round"/>
+            </g>
           </g>
-
-          <!-- 3 暗夜：深蓝斗篷裙 + 星月尖帽 -->
-          <g class="outfit" data-outfit="3">
-            <path d="M36 56 C 33 67, 32 78, 34 86 L 62 86 C 64 78, 63 67, 60 56 Q 48 61 36 56 Z" fill="var(--outfit)" filter="url(#clothShadow)"/>
-            <path d="M36 56 C 33 67, 32 78, 34 86 L 62 86 C 64 78, 63 67, 60 56 Q 48 61 36 56 Z" fill="url(#clothShade)"/>
-            <path d="M38 56 L 30 82 L 38 80 Z" fill="var(--outfit)" opacity=".85"/>
-            <path d="M58 56 L 66 82 L 58 80 Z" fill="var(--outfit)" opacity=".85"/>
-            <path d="M39 60 Q 48 66 57 60 Q 48 70 39 60 Z" fill="var(--outfit-2)" opacity=".55"/>
-            <circle cx="41" cy="76" r="1.2" fill="#ffffff" opacity=".85"/>
-            <circle cx="55" cy="80" r="1.2" fill="#ffffff" opacity=".85"/>
-            <path d="M32 17 Q 39 8 48 2 Q 57 8 64 17 Q 57 13 48 13 Q 39 13 32 17 Z" fill="var(--outfit)"/>
-            <path d="M45 7 Q 48 5 52 7" stroke="#ffffff" stroke-width="1.5" fill="none" opacity=".4"/>
-            <path d="M29 17 Q 48 23 67 17 Q 67 19 48 25 Q 29 19 29 17 Z" fill="var(--outfit-2)"/>
-            <path d="M57 4 A 4 4 0 1 1 64 8 A 3.2 3.2 0 1 0 57 4 Z" fill="#ffd23f"/>
-            <path d="M42 5 L 43 7 L 45 7 L 43.6 8 L 44 10 L 42 8.8 L 40 10 L 40.4 8 L 39 7 L 41 7 Z" fill="#ffffff"/>
+          <!-- school 校园学霸 -->
+          <g class="outfit" data-theme="school">
+            <g data-slot="bottom">
+              <path d="M38 70 L 58 70 L 61 85 L 49.5 85 L 48 78 L 46.5 85 L 35 85 Z" fill="#565763" stroke="var(--line)" stroke-width="1.2"/>
+              <path d="M41 72 L 41 84 M 46 72 L 46 84 M 50 72 L 50 84 M 55 72 L 55 84" stroke="#3d3e46" stroke-width="1"/>
+            </g>
+            <g data-slot="top">
+              <path d="M39 43 C 37.5 52, 37.5 62, 39 71 L 57 71 C 58.5 62, 58.5 52, 57 43 Q 48 46.5 39 43 Z" fill="#3f518c" stroke="var(--line)" stroke-width="1.3"/>
+              <path d="M48 44 L 45.5 52 L 48 60 L 50.5 52 Z" fill="#c83c3c"/>
+              <path d="M46 44 L 48 47 L 50 44" stroke="#ffffff" stroke-width="1.2" fill="none"/>
+            </g>
+            <g data-slot="shoes">
+              <ellipse cx="42.4" cy="94.5" rx="6" ry="3.4" fill="#28282c" stroke="var(--line)" stroke-width="1.2"/>
+              <ellipse cx="53.6" cy="94.5" rx="6" ry="3.4" fill="#28282c" stroke="var(--line)" stroke-width="1.2"/>
+            </g>
+            <g data-slot="head">
+              <path d="M48 6 L 74 16 L 48 26 L 22 16 Z" fill="#1e1e24" stroke="var(--line)" stroke-width="1.2"/>
+              <path d="M60 20 L 60 30 Q 60 34 66 33" stroke="#c8a23c" stroke-width="2" fill="none"/>
+            </g>
+            <g data-slot="back">
+              <path d="M36 48 L 30 44 C 26 48, 25 60, 27 68 L 36 70 Z" fill="#c63c3c" stroke="var(--line)" stroke-width="1.2"/>
+              <path d="M60 48 L 66 44 C 70 48, 71 60, 69 68 L 60 70 Z" fill="#c63c3c" stroke="var(--line)" stroke-width="1.2"/>
+            </g>
+            <g data-slot="hand">
+              <rect x="62" y="58" width="15" height="13" rx="2" fill="#966e46" stroke="var(--line)" stroke-width="1.2"/>
+              <path d="M69.5 58 L 69.5 71" stroke="#fff8eb" stroke-width="1.6"/>
+            </g>
           </g>
-
-          <!-- 4 自然有机：苔藓背带裙 + 花环 -->
-          <g class="outfit" data-outfit="4">
-            <path d="M36 56 C 33 67, 32 78, 34 86 L 62 86 C 64 78, 63 67, 60 56 Q 48 61 36 56 Z" fill="var(--outfit)" filter="url(#clothShadow)"/>
-            <path d="M36 56 C 33 67, 32 78, 34 86 L 62 86 C 64 78, 63 67, 60 56 Q 48 61 36 56 Z" fill="url(#clothShade)"/>
-            <path d="M40 56 L 41 49 M 56 56 L 55 49" stroke="var(--outfit-2)" stroke-width="2.5" stroke-linecap="round"/>
-            <rect x="42" y="78" width="12" height="6" rx="3" fill="var(--outfit-2)"/>
-            <path d="M27 15 Q 40 6 48 6 Q 56 6 69 15" stroke="var(--outfit-2)" stroke-width="2.4" fill="none" stroke-linecap="round"/>
-            <g><circle cx="30" cy="11" r="2.3" fill="var(--outfit)"/><circle cx="30" cy="11" r="1" fill="#ffffff" opacity=".9"/></g>
-            <g><circle cx="39" cy="7" r="2.3" fill="var(--outfit-2)"/><circle cx="39" cy="7" r="1" fill="#ffffff" opacity=".9"/></g>
-            <g><circle cx="48" cy="6" r="2.5" fill="var(--outfit)"/><circle cx="48" cy="6" r="1.1" fill="#ffffff" opacity=".9"/></g>
-            <g><circle cx="57" cy="7" r="2.3" fill="var(--outfit-2)"/><circle cx="57" cy="7" r="1" fill="#ffffff" opacity=".9"/></g>
-            <g><circle cx="66" cy="11" r="2.3" fill="var(--outfit)"/><circle cx="66" cy="11" r="1" fill="#ffffff" opacity=".9"/></g>
+          <!-- home 居家慵懒 -->
+          <g class="outfit" data-theme="home">
+            <g data-slot="bottom">
+              <path d="M38.5 70 L 57.5 70 L 58.5 85 L 50.5 85 L 48 77 L 45.5 85 L 37.5 85 Z" fill="#fff3e0" stroke="var(--line)" stroke-width="1.2"/>
+              <path d="M40 74 L 56 74" stroke="#e8c9a0" stroke-width="1.2"/>
+            </g>
+            <g data-slot="top">
+              <path d="M38 43 C 36.5 53, 36.5 63, 38.5 72 L 57.5 72 C 59.5 63, 59.5 53, 58 43 Q 48 46.5 38 43 Z" fill="#ff9850" stroke="var(--line)" stroke-width="1.3"/>
+              <path d="M40 48 L 56 48" stroke="#e07830" stroke-width="1.4" opacity=".7"/>
+            </g>
+            <g data-slot="shoes">
+              <ellipse cx="42.4" cy="94.5" rx="6.5" ry="3.8" fill="#ffcd94" stroke="var(--line)" stroke-width="1.2"/>
+              <ellipse cx="53.6" cy="94.5" rx="6.5" ry="3.8" fill="#ffcd94" stroke="var(--line)" stroke-width="1.2"/>
+            </g>
+            <g data-slot="hand">
+              <ellipse cx="69" cy="66" rx="9" ry="7" fill="#ff8278" stroke="var(--line)" stroke-width="1.2"/>
+              <rect x="65" y="58" width="8" height="4" rx="2" fill="#e06058"/>
+            </g>
           </g>
-
-          <!-- 5 复古未来：霓虹铠甲 + 护目镜 + 天线 -->
-          <g class="outfit" data-outfit="5">
-            <path d="M36 56 C 33 67, 32 78, 34 86 L 62 86 C 64 78, 63 67, 60 56 Q 48 61 36 56 Z" fill="var(--outfit)" filter="url(#clothShadow)"/>
-            <path d="M36 56 C 33 67, 32 78, 34 86 L 62 86 C 64 78, 63 67, 60 56 Q 48 61 36 56 Z" fill="url(#clothShade)"/>
-            <path d="M39 58 L 44 54 L 52 54 L 57 58 Q 48 65 39 58 Z" fill="var(--outfit-2)" opacity=".5"/>
-            <path d="M37 68 L 45 65 L 45 82" stroke="var(--outfit-2)" stroke-width="1.5" fill="none"/>
-            <path d="M59 68 L 51 65 L 51 82" stroke="var(--outfit-2)" stroke-width="1.5" fill="none"/>
-            <path d="M48 9 L 52 2" stroke="var(--outfit)" stroke-width="2.4" stroke-linecap="round"/>
-            <circle cx="53" cy="1.5" r="2.4" fill="var(--outfit-2)"/>
-            <circle cx="53" cy="1.5" r="1" fill="#ffffff" opacity=".7"/>
-            <rect x="31" y="31" width="15" height="11" rx="4.5" fill="var(--outfit)"/>
-            <rect x="33" y="33" width="11" height="7" rx="3" fill="#0d0f0d" opacity=".5"/>
-            <path d="M34.5 34 L 38 39" stroke="var(--outfit-2)" stroke-width="1.4" opacity=".8"/>
-            <rect x="50" y="31" width="15" height="11" rx="4.5" fill="var(--outfit)"/>
-            <rect x="52" y="33" width="11" height="7" rx="3" fill="#0d0f0d" opacity=".5"/>
-            <path d="M53.5 34 L 57 39" stroke="var(--outfit-2)" stroke-width="1.4" opacity=".8"/>
-            <rect x="45.5" y="34.5" width="5" height="4.5" rx="1.5" fill="var(--outfit)"/>
-            <path d="M31 34 L 27 32" stroke="var(--outfit)" stroke-width="2"/>
-            <path d="M65 34 L 69 32" stroke="var(--outfit)" stroke-width="2"/>
+          <!-- halloween 万圣节 -->
+          <g class="outfit" data-theme="halloween">
+            <g data-slot="bottom">
+              <path d="M39 70 L 57 70 L 59 84 L 51.5 84 L 48 76 L 44.5 84 L 37 84 Z" fill="#28203c" stroke="var(--line)" stroke-width="1.3"/>
+            </g>
+            <g data-slot="top">
+              <path d="M39 43 C 37.5 52, 37.5 62, 39 71 L 57 71 C 58.5 62, 58.5 52, 57 43 Q 48 46.5 39 43 Z" fill="#4a2e6e" stroke="var(--line)" stroke-width="1.3"/>
+              <path d="M42 48 L 45 56 M 54 48 L 51 56" stroke="#ffb84d" stroke-width="2.2" stroke-linecap="round"/>
+            </g>
+            <g data-slot="shoes">
+              <path d="M37 91 L 48 91 L 48 95 Q 42 98 36 95 Z" fill="#7846a0" stroke="var(--line)" stroke-width="1.2"/>
+              <path d="M59 91 L 48 91 L 48 95 Q 54 98 60 95 Z" fill="#7846a0" stroke="var(--line)" stroke-width="1.2"/>
+            </g>
+            <g data-slot="head">
+              <path d="M48 4 L 60 34 L 36 34 Z" fill="#321e50" stroke="var(--line)" stroke-width="1.3"/>
+              <rect x="32" y="32" width="32" height="5" fill="#321e50" stroke="var(--line)" stroke-width="1.2"/>
+              <path d="M44 16 L 52 24 M 52 16 L 44 24" stroke="#ffb84d" stroke-width="1.4" opacity=".7"/>
+            </g>
+            <g data-slot="back">
+              <path d="M36 46 C 24 36, 14 40, 16 50 C 18 58, 30 58, 37 52 Z" fill="#3c285a" stroke="var(--line)" stroke-width="1.2"/>
+              <path d="M60 46 C 72 36, 82 40, 80 50 C 78 58, 66 58, 59 52 Z" fill="#3c285a" stroke="var(--line)" stroke-width="1.2"/>
+            </g>
+            <g data-slot="hand">
+              <ellipse cx="69" cy="66" rx="8.5" ry="7.5" fill="#ff8c28" stroke="var(--line)" stroke-width="1.2"/>
+              <path d="M64 64 L 68 68 M 74 64 L 70 68 M 69 62 L 69 65" stroke="#321e50" stroke-width="1.4"/>
+              <rect x="67" y="58" width="4" height="3" fill="#5a8a46"/>
+            </g>
           </g>
-
-          <!-- 6 轻奢雅致：金色礼服披肩 + 礼帽 -->
-          <g class="outfit" data-outfit="6">
-            <path d="M36 56 C 33 67, 32 78, 34 86 L 62 86 C 64 78, 63 67, 60 56 Q 48 61 36 56 Z" fill="var(--outfit)" filter="url(#clothShadow)"/>
-            <path d="M36 56 C 33 67, 32 78, 34 86 L 62 86 C 64 78, 63 67, 60 56 Q 48 61 36 56 Z" fill="url(#clothShade)"/>
-            <path d="M36 62 Q 48 72 60 62 L 60 66 Q 48 76 36 66 Z" fill="var(--outfit-2)"/>
-            <rect x="45.5" y="70" width="5" height="3.5" rx="1" fill="#ffffff" opacity=".8"/>
-            <path d="M41 74 L 41 82 M 48 76 L 48 84 M 55 74 L 55 82" stroke="var(--outfit-2)" stroke-width="1.2" fill="none" opacity=".5"/>
-            <path d="M37 15 L 37 6 Q 48 2 59 6 L 59 15 Q 48 11 37 15 Z" fill="var(--outfit)"/>
-            <path d="M41 7 Q 48 4 55 7" stroke="#ffffff" stroke-width="1.5" fill="none" opacity=".45" stroke-linecap="round"/>
-            <path d="M30 15 Q 48 20 66 15 Q 66 17.5 48 22 Q 30 17.5 30 15 Z" fill="var(--outfit-2)"/>
-            <path d="M37 9 Q 48 12 59 9 L 59 11 Q 48 14 37 11 Z" fill="var(--outfit-2)"/>
-            <rect x="46" y="9.5" width="4" height="4" rx="1" fill="#ffffff" opacity=".7"/>
+          <!-- christmas 圣诞 -->
+          <g class="outfit" data-theme="christmas">
+            <g data-slot="bottom">
+              <path d="M39 70 L 57 70 L 59 84 L 51.5 84 L 48 76 L 44.5 84 L 37 84 Z" fill="#a02828" stroke="var(--line)" stroke-width="1.3"/>
+            </g>
+            <g data-slot="top">
+              <path d="M39 43 C 37.5 52, 37.5 62, 39 71 L 57 71 C 58.5 62, 58.5 52, 57 43 Q 48 46.5 39 43 Z" fill="#c83232" stroke="var(--line)" stroke-width="1.3"/>
+              <path d="M39 43 C 37.5 52, 37.5 62, 39 71 L 45 71 C 44 62, 44 52, 45 44 Z" fill="#fff8eb" opacity=".9"/>
+              <path d="M55 43 C 56.5 52, 56.5 62, 55 71 L 51 71 C 52 62, 52 52, 51 44 Z" fill="#fff8eb" opacity=".9"/>
+              <rect x="43" y="58" width="10" height="4" rx="2" fill="#ffd23f"/>
+            </g>
+            <g data-slot="shoes">
+              <ellipse cx="42.4" cy="94.5" rx="6.2" ry="3.6" fill="#821e1e" stroke="var(--line)" stroke-width="1.2"/>
+              <ellipse cx="53.6" cy="94.5" rx="6.2" ry="3.6" fill="#821e1e" stroke="var(--line)" stroke-width="1.2"/>
+              <circle cx="37" cy="93" r="2.2" fill="#fff8eb"/><circle cx="59" cy="93" r="2.2" fill="#fff8eb"/>
+            </g>
+            <g data-slot="head">
+              <path d="M34 16 C 34 6, 62 6, 62 16 L 62 20 L 34 20 Z" fill="#d23737" stroke="var(--line)" stroke-width="1.2"/>
+              <path d="M60 6 C 68 4, 72 8, 70 12 C 68 15, 62 14, 61 11" fill="#d23737" stroke="var(--line)" stroke-width="1.1"/>
+              <circle cx="71" cy="13" r="3" fill="#fff8eb" stroke="var(--line)" stroke-width="1"/>
+              <rect x="32" y="19" width="32" height="5" fill="#fff8eb" stroke="var(--line)" stroke-width="1"/>
+            </g>
+            <g data-slot="back">
+              <path d="M36 14 C 30 6, 24 6, 23 12 C 22 17, 29 20, 35 18 Z" fill="#aa7846" stroke="var(--line)" stroke-width="1.2"/>
+              <path d="M60 14 C 66 6, 72 6, 73 12 C 74 17, 67 20, 61 18 Z" fill="#aa7846" stroke="var(--line)" stroke-width="1.2"/>
+            </g>
+            <g data-slot="hand">
+              <rect x="62" y="60" width="14" height="12" rx="2" fill="#e6c85a" stroke="var(--line)" stroke-width="1.2"/>
+              <path d="M69 60 L 69 72 M 62 66 L 76 66" stroke="#fff8eb" stroke-width="2.4"/>
+            </g>
           </g>
-
-          <!-- 7 新春福气（特别篇）：朱红盘扣袄裙 + 福字瓜皮帽 -->
-          <g class="outfit" data-outfit="7">
-            <path d="M36 56 C 33 67, 32 78, 34 86 L 62 86 C 64 78, 63 67, 60 56 Q 48 61 36 56 Z" fill="var(--outfit)" filter="url(#clothShadow)"/>
-            <path d="M36 56 C 33 67, 32 78, 34 86 L 62 86 C 64 78, 63 67, 60 56 Q 48 61 36 56 Z" fill="url(#clothShade)"/>
-            <path d="M48 56 L 42 50 M 48 56 L 54 50" stroke="var(--outfit-2)" stroke-width="2.4" stroke-linecap="round"/>
-            <path d="M42 50 L 54 50" stroke="var(--outfit-2)" stroke-width="2" fill="none" opacity=".8"/>
-            <circle cx="44" cy="64" r="1.6" fill="var(--outfit-2)"/>
-            <circle cx="48" cy="70" r="1.6" fill="var(--outfit-2)"/>
-            <circle cx="52" cy="76" r="1.6" fill="var(--outfit-2)"/>
-            <path d="M35 60 Q 33 68 35.5 74" stroke="var(--outfit-2)" stroke-width="1.6" fill="none" stroke-linecap="round"/>
-            <circle cx="36.5" cy="76" r="1.7" fill="var(--outfit-2)"/>
-            <path d="M31 18 Q 32 6 48 6 Q 64 6 65 18 Q 48 13 31 18 Z" fill="var(--outfit)"/>
-            <path d="M29 18 Q 48 24 67 18 Q 67 21 48 26 Q 29 21 29 18 Z" fill="var(--outfit-2)"/>
-            <circle cx="48" cy="6.5" r="2.4" fill="var(--outfit-2)"/>
-            <circle cx="48" cy="6.5" r="1" fill="#ffffff" opacity=".7"/>
-            <rect x="45.2" y="12.5" width="5.6" height="5.6" rx="1" fill="var(--outfit-2)"/>
-            <path d="M46.6 14 L 49.4 16.6 M 49.4 14 L 46.6 16.6" stroke="var(--outfit)" stroke-width="1.3" stroke-linecap="round"/>
+          <!-- sport 运动活力 -->
+          <g class="outfit" data-theme="sport">
+            <g data-slot="bottom">
+              <path d="M39 70 L 57 70 L 58 83 L 50.5 83 L 48 76 L 45.5 83 L 38 83 Z" fill="#3c6ec8" stroke="var(--line)" stroke-width="1.3"/>
+              <path d="M40 72 L 56 72" stroke="#fff" stroke-width="1.4" opacity=".7"/>
+            </g>
+            <g data-slot="top">
+              <path d="M39 43 C 37.5 52, 37.5 62, 39 71 L 57 71 C 58.5 62, 58.5 52, 57 43 Q 48 46.5 39 43 Z" fill="#f5f5fa" stroke="var(--line)" stroke-width="1.3"/>
+              <path d="M48 44 L 48 71" stroke="#3c6ec8" stroke-width="2.4"/>
+              <path d="M39 48 Q 48 52 57 48" stroke="#3c6ec8" stroke-width="1.6" fill="none"/>
+            </g>
+            <g data-slot="shoes">
+              <ellipse cx="42.4" cy="94.5" rx="6.4" ry="3.6" fill="#5aa0e6" stroke="var(--line)" stroke-width="1.2"/>
+              <ellipse cx="53.6" cy="94.5" rx="6.4" ry="3.6" fill="#5aa0e6" stroke="var(--line)" stroke-width="1.2"/>
+              <path d="M37 94 L 48 94 M 49 94 L 60 94" stroke="#fff" stroke-width="1.4"/>
+            </g>
+            <g data-slot="head">
+              <path d="M33 17 Q 48 10 63 17 L 63 22 Q 48 16 33 22 Z" fill="#f5f5fa" stroke="var(--line)" stroke-width="1.2"/>
+              <path d="M63 18 L 68 18" stroke="#c83c3c" stroke-width="2.4" stroke-linecap="round"/>
+            </g>
+            <g data-slot="back">
+              <rect x="34" y="50" width="28" height="16" rx="2" fill="#e6e6eb" stroke="var(--line)" stroke-width="1.2" opacity=".9"/>
+              <text x="48" y="62" font-size="10" text-anchor="middle" fill="#c83c3c" font-weight="bold">23</text>
+            </g>
+            <g data-slot="hand">
+              <circle cx="68" cy="66" r="8" fill="#f08c3c" stroke="var(--line)" stroke-width="1.2"/>
+              <path d="M60.5 63 C 65 66, 71 66, 75.5 63 M 68 58 L 68 74" stroke="#3a2410" stroke-width="1.2" fill="none"/>
+            </g>
           </g>
-
-          <!-- 8 中秋月兔（特别篇）：月白披风裙 + 兔耳 + 桂花徽章 -->
-          <g class="outfit" data-outfit="8">
-            <path d="M36 56 C 33 67, 32 78, 34 86 L 62 86 C 64 78, 63 67, 60 56 Q 48 61 36 56 Z" fill="var(--outfit)" filter="url(#clothShadow)"/>
-            <path d="M36 56 C 33 67, 32 78, 34 86 L 62 86 C 64 78, 63 67, 60 56 Q 48 61 36 56 Z" fill="url(#clothShade)"/>
-            <path d="M38 56 L 32 80 L 40 78 Z" fill="var(--outfit)" opacity=".9"/>
-            <path d="M58 56 L 64 80 L 56 78 Z" fill="var(--outfit)" opacity=".9"/>
-            <path d="M39 58 L 43 64 M 57 58 L 53 64" stroke="var(--outfit-2)" stroke-width="1.8" stroke-linecap="round"/>
-            <circle cx="48" cy="66" r="2.3" fill="var(--outfit-2)"/>
-            <circle cx="48" cy="76" r="4.2" fill="var(--outfit-2)" opacity=".9"/>
-            <circle cx="46.7" cy="74.9" r="1.1" fill="var(--outfit)" opacity=".7"/>
-            <path d="M39 20 C 35.5 9, 37.5 2, 42 1 C 46.5 3, 45.5 12, 43.5 20 Z" fill="#fffdf6" stroke="var(--outfit-2)" stroke-width="1.1"/>
-            <path d="M41 18 C 39.3 11, 40.3 5, 42.5 4 C 44.7 6.5, 44.3 12.5, 43.3 18 Z" fill="#ffc9d6"/>
-            <path d="M57 20 C 61.5 11, 64.5 5, 69 6 C 70 10.5, 64.5 17.5, 59 21.5 Z" fill="#fffdf6" stroke="var(--outfit-2)" stroke-width="1.1"/>
-            <path d="M58.5 19 C 61.7 12.7, 64.2 9, 67 9 C 67.5 11.8, 63.8 16.7, 60 19.5 Z" fill="#ffc9d6"/>
+          <!-- idol 偶像打歌 -->
+          <g class="outfit" data-theme="idol">
+            <g data-slot="bottom">
+              <path d="M38 70 L 58 70 C 62 76, 63 84, 61 88 L 35 88 C 33 84, 34 76, 38 70 Z" fill="#e6b4eb" stroke="var(--line)" stroke-width="1.3"/>
+              <path d="M38 74 Q 48 80 58 74" stroke="#fff" stroke-width="1.4" fill="none" opacity=".8"/>
+            </g>
+            <g data-slot="top">
+              <path d="M39 43 C 37.5 52, 37.5 62, 39 71 L 57 71 C 58.5 62, 58.5 52, 57 43 Q 48 46.5 39 43 Z" fill="#ffc8dc" stroke="var(--line)" stroke-width="1.3"/>
+              <path d="M40 56 Q 48 62 56 56" stroke="#fff" stroke-width="1.6" fill="none" opacity=".9"/>
+              <circle cx="48" cy="50" r="2" fill="#fff" opacity=".9"/>
+            </g>
+            <g data-slot="shoes">
+              <path d="M37.5 92 L 47 92 L 47.5 95 Q 42 98 36.5 95 Z" fill="#ffaac8" stroke="var(--line)" stroke-width="1.2"/>
+              <path d="M58.5 92 L 49 92 L 48.5 95 Q 54 98 59.5 95 Z" fill="#ffaac8" stroke="var(--line)" stroke-width="1.2"/>
+            </g>
+            <g data-slot="head">
+              <path d="M40 10 L 45 17 L 41 16.5 Z" fill="#ffd23f" stroke="var(--line)" stroke-width="1"/>
+              <path d="M56 10 L 51 17 L 55 16.5 Z" fill="#ffd23f" stroke="var(--line)" stroke-width="1"/>
+              <circle cx="48" cy="6" r="2.6" fill="#ff6fb0" stroke="var(--line)" stroke-width="1"/>
+            </g>
+            <g data-slot="back">
+              <path d="M34 46 C 20 34, 8 38, 10 50 C 12 60, 26 60, 35 52 Z" fill="#ffebf5" stroke="#e8a8c8" stroke-width="1.2"/>
+              <path d="M62 46 C 76 34, 88 38, 86 50 C 84 60, 70 60, 61 52 Z" fill="#ffebf5" stroke="#e8a8c8" stroke-width="1.2"/>
+            </g>
+            <g data-slot="hand">
+              <rect x="65" y="52" width="4" height="22" rx="2" fill="#f5f5fa" stroke="var(--line)" stroke-width="1"/>
+              <circle cx="67" cy="49" r="4.5" fill="#aadcf5" stroke="var(--line)" stroke-width="1.1"/>
+              <circle cx="67" cy="49" r="1.8" fill="#fff" opacity=".9"/>
+            </g>
           </g>
-
-          <!-- 9 派对时光（特别篇）：彩条尖帽 + 彩点连衣裙 -->
-          <g class="outfit" data-outfit="9">
-            <path d="M36 56 C 33 67, 32 78, 34 86 L 62 86 C 64 78, 63 67, 60 56 Q 48 61 36 56 Z" fill="var(--outfit)" filter="url(#clothShadow)"/>
-            <path d="M36 56 C 33 67, 32 78, 34 86 L 62 86 C 64 78, 63 67, 60 56 Q 48 61 36 56 Z" fill="url(#clothShade)"/>
-            <circle cx="39" cy="68" r="1.8" fill="var(--outfit-2)"/>
-            <circle cx="42" cy="78" r="1.5" fill="#ffffff" opacity=".85"/>
-            <circle cx="48" cy="72" r="1.8" fill="var(--outfit-2)"/>
-            <circle cx="54" cy="79" r="1.5" fill="#ffffff" opacity=".85"/>
-            <circle cx="57" cy="66" r="1.8" fill="var(--outfit-2)"/>
-            <path d="M36 20 L 44 -1 L 55 18 Q 46 14 36 20 Z" fill="var(--outfit)"/>
-            <path d="M39 12 L 46 9.5 M 41.5 4.5 L 48.5 12" stroke="var(--outfit-2)" stroke-width="2" stroke-linecap="round" opacity=".85"/>
-            <circle cx="44.5" cy="-0.5" r="2.6" fill="var(--outfit-2)"/>
-            <circle cx="44.5" cy="-0.5" r="1" fill="#ffffff" opacity=".8"/>
-            <path d="M34 20 Q 46 25.5 57 19 Q 57 21.8 45.5 26.5 Q 34 23 34 20 Z" fill="var(--outfit-2)"/>
-          </g>
-
-          <!-- 10 雨天出行（特别篇）：明黄连帽雨衣 + 水滴纹 -->
-          <g class="outfit" data-outfit="10">
-            <path d="M36 56 C 33 67, 32 78, 34 86 L 62 86 C 64 78, 63 67, 60 56 Q 48 61 36 56 Z" fill="var(--outfit)" filter="url(#clothShadow)"/>
-            <path d="M36 56 C 33 67, 32 78, 34 86 L 62 86 C 64 78, 63 67, 60 56 Q 48 61 36 56 Z" fill="url(#clothShade)"/>
-            <path d="M48 56 L 48 50" stroke="var(--outfit-2)" stroke-width="2.4" stroke-linecap="round"/>
-            <circle cx="48" cy="66" r="1.7" fill="var(--outfit-2)"/>
-            <circle cx="48" cy="74" r="1.7" fill="var(--outfit-2)"/>
-            <path d="M39 68 Q 36.8 71.5 39 73.8 Q 41.2 71.5 39 68 Z" fill="#ffffff" opacity=".75"/>
-            <path d="M58 70 Q 55.8 73.5 58 75.8 Q 60.2 73.5 58 70 Z" fill="#ffffff" opacity=".75"/>
-            <path d="M44 80 Q 42.3 82.8 44 84.6 Q 45.7 82.8 44 80 Z" fill="#ffffff" opacity=".6"/>
-            <path d="M32 22 Q 30 8 48 6 Q 66 8 64 22 Q 56 15 48 15 Q 40 15 32 22 Z" fill="var(--outfit)"/>
-            <path d="M30 21 Q 48 27.5 66 21 Q 67 24.5 48 30 Q 29 24.5 30 21 Z" fill="var(--outfit-2)" opacity=".9"/>
-            <path d="M34 24 Q 34 31 38.5 35 M 62 24 Q 62 31 57.5 35" stroke="var(--outfit-2)" stroke-width="1.4" fill="none" stroke-linecap="round"/>
-            <circle cx="39" cy="37" r="1.4" fill="var(--outfit-2)"/>
-            <circle cx="57" cy="37" r="1.4" fill="var(--outfit-2)"/>
-          </g>
-
-          <!-- 鞋子：画在最后，从裙摆下露出 -->
-          <g class="feet">
-            <ellipse cx="40.5" cy="95.5" rx="6.5" ry="4" fill="#8a5a3d" />
-            <ellipse cx="55.5" cy="95.5" rx="6.5" ry="4" fill="#8a5a3d" />
-            <ellipse cx="39.3" cy="94.4" rx="3.2" ry="1.3" fill="#ffffff" opacity=".35" />
-            <ellipse cx="54.3" cy="94.4" rx="3.2" ry="1.3" fill="#ffffff" opacity=".35" />
-          </g>
-
-          <!-- 头：大圆脸（三头身的头） -->
-          <ellipse cx="48" cy="30" rx="21" ry="19.5" fill="url(#headGrad)" />
-
-          <!-- 头发：后层蓬松轮廓 + 前刘海 + 两侧鬓发 -->
-          <path d="M27 30 C 26 14, 36 7.5, 48 7.5 C 60 7.5, 70 14, 69 30 C 69 36, 67.5 40, 66 42 C 66.5 34, 66 28, 63 24 C 64 30, 63.5 34, 62.5 37 C 61 26, 56 19.5, 48 19.5 C 40 19.5, 35 26, 33.5 37 C 32.5 34, 32 30, 33 24 C 30 28, 29.5 34, 30 42 C 28.5 40, 27 36, 27 30 Z" fill="var(--hair)" />
-          <path d="M30 26 C 33 18, 40 14.5, 48 14.5 C 56 14.5, 63 18, 66 26 C 63 22.5, 56 20.5, 48 20.5 C 40 20.5, 33 22.5, 30 26 Z" fill="#ffffff" opacity=".22" />
-          <ellipse cx="27.5" cy="38" rx="4.6" ry="9.5" fill="var(--hair)" />
-          <ellipse cx="68.5" cy="38" rx="4.6" ry="9.5" fill="var(--hair)" />
-
-          <!-- 呆毛 = 头顶豆芽（身份标识：从刘海里长出来的一株小芽） -->
-          <g class="sprout">
-            <path d="M48 8 C 46.5 3.5, 49 0.5, 53 0.5 C 55.5 0.5, 55.5 4, 52.5 4.5 C 50.3 4.9, 48.8 6.3, 48 8" fill="none" stroke="var(--sprout-stem)" stroke-width="1.6" stroke-linecap="round" />
-            <path d="M47.6 8.5 C 45 2.5, 36.5 0, 32.5 4 C 30 6.5, 37.5 11.5, 44 9.8 C 46 9.2, 47 8.9, 47.6 8.5 Z" fill="var(--sprout-a)" />
-            <path d="M34 5 C 37 4.2, 41.5 5.4, 45 8.2" stroke="#ffffff" stroke-width="0.9" fill="none" opacity=".45" stroke-linecap="round" />
-            <path d="M48.4 8.5 C 51 3, 59.5 0.5, 63.5 4 C 66 6.5, 59 11, 52.5 9.6 C 50.4 9.1, 49.1 8.9, 48.4 8.5 Z" fill="var(--sprout-b)" />
-            <path d="M61 4.8 C 58 4.2, 54 5.6, 51 8.2" stroke="#ffffff" stroke-width="0.9" fill="none" opacity=".4" stroke-linecap="round" />
-          </g>
-
-          <!-- 五官：直接在脸上，大眼双层高光 -->
-          <ellipse class="eye" cx="39" cy="35" rx="4.8" ry="6.4" fill="var(--eye)" style="transform-origin:39px 35px" />
-          <ellipse class="eye" cx="57" cy="35" rx="4.8" ry="6.4" fill="var(--eye)" style="transform-origin:57px 35px" />
-          <circle cx="41" cy="32.5" r="2" fill="#fffdf6" />
-          <circle cx="37.2" cy="37.6" r="0.9" fill="#fffdf6" opacity=".85" />
-          <circle cx="59" cy="32.5" r="2" fill="#fffdf6" />
-          <circle cx="55.2" cy="37.6" r="0.9" fill="#fffdf6" opacity=".85" />
-
-          <!-- 腮红：双层 -->
-          <ellipse cx="31.5" cy="43.5" rx="6" ry="3.4" fill="var(--blush)" opacity=".55" />
-          <ellipse cx="32.3" cy="43.5" rx="4" ry="2.3" fill="var(--blush)" />
-          <ellipse cx="64.5" cy="43.5" rx="6" ry="3.4" fill="var(--blush)" opacity=".55" />
-          <ellipse cx="63.7" cy="43.5" rx="4" ry="2.3" fill="var(--blush)" />
-
-          <!-- 嘴：小张嘴笑 -->
-          <path class="mouth" d="M44.5 45.5 Q 48 50 51.5 45.5 Q 48 47.5 44.5 45.5 Z" fill="var(--eye)" style="transform-origin:48px 46.5px" />
-          <path d="M46 47.3 Q 48 48.8 50 47.3 Q 48 48.3 46 47.3 Z" fill="#e08a6a" opacity=".85" />
-
-          <!-- 服装层：7 套真正的「衣服/配饰」，不是换身体颜色。
-               每套是独立 SVG 造型（帽子/领结/眼镜等），颜色用 --outfit / --outfit-2，
-               由 applyTheme 按主题索引切换显示哪个组（data-outfit=0..6）。 -->
-
-          <!-- 0 玩趣明快：珊瑚橙连衣裙 + 蝴蝶结 -->
-          <g class="outfit" data-outfit="0">
-            <path d="M13 66 C 13 79, 26 96, 48 96 C 70 96, 83 79, 83 66 Q 48 75 13 66 Z" fill="var(--outfit)" filter="url(#clothShadow)"/>
-            <path d="M13 66 C 13 79, 26 96, 48 96 C 70 96, 83 79, 83 66 Q 48 75 13 66 Z" fill="url(#clothShade)"/>
-            <path d="M34 66 L 36 58 L 41 58 L 40 68" stroke="var(--outfit)" stroke-width="3" fill="none"/>
-            <path d="M62 66 L 60 58 L 55 58 L 56 68" stroke="var(--outfit)" stroke-width="3" fill="none"/>
-            <circle cx="38" cy="58" r="1.8" fill="var(--outfit-2)"/>
-            <circle cx="58" cy="58" r="1.8" fill="var(--outfit-2)"/>
-            <path d="M40 72 L 56 72 L 54 80 L 42 80 Z" fill="var(--outfit-2)" opacity=".45"/>
-            <path d="M47 13 C 40 5 28 4 24 9 C 20 14 30 19 37 15 C 42 13 46 12 47 13 Z" fill="var(--outfit)"/>
-            <path d="M45 13 C 40 8 32 7 29 10 C 27 12 30 15 34 15 C 38 14 43 13 45 13 Z" fill="var(--outfit-2)" opacity=".55"/>
-            <path d="M49 13 C 56 5 68 4 72 9 C 76 14 66 19 59 15 C 54 13 51 12 49 13 Z" fill="var(--outfit)"/>
-            <path d="M51 13 C 56 8 64 7 67 10 C 69 12 66 15 62 15 C 58 14 53 13 51 13 Z" fill="var(--outfit-2)" opacity=".55"/>
-            <path d="M45 16 Q 42 22 44 26 Q 46 28 48 26 Q 50 22 49 16 Z" fill="var(--outfit)"/>
-            <path d="M51 16 Q 54 22 52 26 Q 50 28 48 26 Q 46 22 47 16 Z" fill="var(--outfit)" opacity=".8"/>
-            <ellipse cx="48" cy="13" rx="5.5" ry="4" fill="var(--outfit-2)"/>
-            <ellipse cx="46.5" cy="11.5" rx="2" ry="1.4" fill="#ffffff" opacity=".55"/>
-          </g>
-
-          <!-- 1 极致极简：素灰长袍 + 围巾 -->
-          <g class="outfit" data-outfit="1">
-            <path d="M13 66 C 13 79, 26 96, 48 96 C 70 96, 83 79, 83 66 Q 48 75 13 66 Z" fill="var(--outfit)" filter="url(#clothShadow)"/>
-            <path d="M13 66 C 13 79, 26 96, 48 96 C 70 96, 83 79, 83 66 Q 48 75 13 66 Z" fill="url(#clothShade)"/>
-            <path d="M37 60 Q 48 66 59 60 L 59 65 Q 48 71 37 65 Z" fill="var(--outfit-2)"/>
-          </g>
-
-          <!-- 2 杂志编辑：朱砂马甲 + 贝雷帽 -->
-          <g class="outfit" data-outfit="2">
-            <path d="M13 66 C 13 79, 26 96, 48 96 C 70 96, 83 79, 83 66 Q 48 75 13 66 Z" fill="var(--outfit)" filter="url(#clothShadow)"/>
-            <path d="M13 66 C 13 79, 26 96, 48 96 C 70 96, 83 79, 83 66 Q 48 75 13 66 Z" fill="url(#clothShade)"/>
-            <path d="M40 66 L 48 74 L 56 66 Q 48 70 40 66 Z" fill="#ffffff" opacity=".85"/>
-            <path d="M44 68 L 39 65 L 39 71 Z" fill="var(--outfit-2)"/>
-            <path d="M52 68 L 57 65 L 57 71 Z" fill="var(--outfit-2)"/>
-            <circle cx="48" cy="68" r="2.2" fill="var(--outfit)"/>
-            <circle cx="48" cy="80" r="1.5" fill="var(--outfit-2)"/>
-            <circle cx="48" cy="88" r="1.5" fill="var(--outfit-2)"/>
-            <path d="M24 14 Q 30 3 48 3 Q 66 3 72 14 Q 66 10 48 10 Q 30 10 24 14 Z" fill="var(--outfit)"/>
-            <path d="M34 9 Q 42 5 50 5" stroke="#ffffff" stroke-width="2" fill="none" opacity=".4" stroke-linecap="round"/>
-            <path d="M23 14 Q 48 20 73 14 Q 73 17 48 22 Q 23 17 23 14 Z" fill="var(--outfit-2)"/>
-            <circle cx="48" cy="4" r="2.5" fill="var(--outfit-2)"/>
-          </g>
-
-          <!-- 3 暗夜：深蓝斗篷 + 尖顶帽 -->
-          <g class="outfit" data-outfit="3">
-            <path d="M13 66 C 13 79, 26 96, 48 96 C 70 96, 83 79, 83 66 Q 48 75 13 66 Z" fill="var(--outfit)" filter="url(#clothShadow)"/>
-            <path d="M13 66 C 13 79, 26 96, 48 96 C 70 96, 83 79, 83 66 Q 48 75 13 66 Z" fill="url(#clothShade)"/>
-            <path d="M30 66 Q 48 72 66 66 Q 48 78 30 66 Z" fill="var(--outfit-2)" opacity=".55"/>
-            <circle cx="36" cy="82" r="1.3" fill="#ffffff" opacity=".85"/>
-            <circle cx="60" cy="86" r="1.3" fill="#ffffff" opacity=".85"/>
-            <path d="M31 17 Q 38 8 48 1 Q 58 8 65 17 Q 58 13 48 13 Q 38 13 31 17 Z" fill="var(--outfit)"/>
-            <path d="M45 6 Q 48 4 52 6" stroke="#ffffff" stroke-width="1.5" fill="none" opacity=".4"/>
-            <path d="M28 17 Q 48 23 68 17 Q 68 19 48 25 Q 28 19 28 17 Z" fill="var(--outfit-2)"/>
-            <path d="M56 4 A 4 4 0 1 1 63 8 A 3.2 3.2 0 1 0 56 4 Z" fill="#ffd23f"/>
-            <path d="M42 5 L 43 7 L 45 7 L 43.6 8 L 44 10 L 42 8.8 L 40 10 L 40.4 8 L 39 7 L 41 7 Z" fill="#ffffff"/>
-          </g>
-
-          <!-- 4 自然有机：苔藓围裙 + 花环 -->
-          <g class="outfit" data-outfit="4">
-            <path d="M13 66 C 13 79, 26 96, 48 96 C 70 96, 83 79, 83 66 Q 48 75 13 66 Z" fill="var(--outfit)" filter="url(#clothShadow)"/>
-            <path d="M13 66 C 13 79, 26 96, 48 96 C 70 96, 83 79, 83 66 Q 48 75 13 66 Z" fill="url(#clothShade)"/>
-            <path d="M36 66 L 38 58 L 42 58 L 42 68" stroke="var(--outfit-2)" stroke-width="2.5" fill="none"/>
-            <path d="M60 66 L 58 58 L 54 58 L 54 68" stroke="var(--outfit-2)" stroke-width="2.5" fill="none"/>
-            <rect x="40" y="83" width="16" height="7" rx="3" fill="var(--outfit-2)"/>
-            <path d="M26 15 Q 40 6 48 6 Q 56 6 70 15" stroke="var(--outfit-2)" stroke-width="2.5" fill="none" stroke-linecap="round"/>
-            <g><circle cx="30" cy="11" r="2.4" fill="var(--outfit)"/><circle cx="30" cy="11" r="1" fill="#ffffff" opacity=".9"/></g>
-            <g><circle cx="39" cy="7" r="2.4" fill="var(--outfit-2)"/><circle cx="39" cy="7" r="1" fill="#ffffff" opacity=".9"/></g>
-            <g><circle cx="48" cy="6" r="2.6" fill="var(--outfit)"/><circle cx="48" cy="6" r="1.1" fill="#ffffff" opacity=".9"/></g>
-            <g><circle cx="57" cy="7" r="2.4" fill="var(--outfit-2)"/><circle cx="57" cy="7" r="1" fill="#ffffff" opacity=".9"/></g>
-            <g><circle cx="66" cy="11" r="2.4" fill="var(--outfit)"/><circle cx="66" cy="11" r="1" fill="#ffffff" opacity=".9"/></g>
-          </g>
-
-          <!-- 5 复古未来：霓虹铠甲 + 护目镜 -->
-          <g class="outfit" data-outfit="5">
-            <path d="M13 66 C 13 79, 26 96, 48 96 C 70 96, 83 79, 83 66 Q 48 75 13 66 Z" fill="var(--outfit)" filter="url(#clothShadow)"/>
-            <path d="M13 66 C 13 79, 26 96, 48 96 C 70 96, 83 79, 83 66 Q 48 75 13 66 Z" fill="url(#clothShade)"/>
-            <path d="M34 66 L 40 62 L 56 62 L 62 66 Q 48 74 34 66 Z" fill="var(--outfit-2)" opacity=".5"/>
-            <path d="M30 74 L 42 70 L 42 88" stroke="var(--outfit-2)" stroke-width="1.5" fill="none"/>
-            <path d="M66 74 L 54 70 L 54 88" stroke="var(--outfit-2)" stroke-width="1.5" fill="none"/>
-            <path d="M48 13 L 53 4" stroke="var(--outfit)" stroke-width="2.5" stroke-linecap="round"/>
-            <circle cx="54" cy="2.5" r="2.5" fill="var(--outfit-2)"/>
-            <circle cx="54" cy="2.5" r="1" fill="#ffffff" opacity=".7"/>
-            <rect x="29" y="34" width="17" height="12" rx="5" fill="var(--outfit)"/>
-            <rect x="31" y="36" width="13" height="8" rx="3.5" fill="#0d0f0d" opacity=".5"/>
-            <path d="M33 37 L 37 43" stroke="var(--outfit-2)" stroke-width="1.5" opacity=".8"/>
-            <rect x="50" y="34" width="17" height="12" rx="5" fill="var(--outfit)"/>
-            <rect x="52" y="36" width="13" height="8" rx="3.5" fill="#0d0f0d" opacity=".5"/>
-            <path d="M54 37 L 58 43" stroke="var(--outfit-2)" stroke-width="1.5" opacity=".8"/>
-            <rect x="46" y="38" width="4" height="5" rx="1.5" fill="var(--outfit)"/>
-            <path d="M29 37 L 25 35" stroke="var(--outfit)" stroke-width="2"/>
-            <path d="M67 37 L 71 35" stroke="var(--outfit)" stroke-width="2"/>
-          </g>
-
-          <!-- 6 轻奢雅致：金色礼服 + 礼帽 -->
-          <g class="outfit" data-outfit="6">
-            <path d="M13 66 C 13 79, 26 96, 48 96 C 70 96, 83 79, 83 66 Q 48 75 13 66 Z" fill="var(--outfit)" filter="url(#clothShadow)"/>
-            <path d="M13 66 C 13 79, 26 96, 48 96 C 70 96, 83 79, 83 66 Q 48 75 13 66 Z" fill="url(#clothShade)"/>
-            <path d="M22 70 Q 48 82 74 70 L 74 74 Q 48 86 22 74 Z" fill="var(--outfit-2)"/>
-            <rect x="45" y="76" width="6" height="4" rx="1" fill="#ffffff" opacity=".8"/>
-            <path d="M40 80 L 40 90 M 48 82 L 48 92 M 56 80 L 56 90" stroke="var(--outfit-2)" stroke-width="1.2" fill="none" opacity=".5"/>
-            <path d="M36 15 L 36 6 Q 48 2 60 6 L 60 15 Q 48 11 36 15 Z" fill="var(--outfit)"/>
-            <path d="M40 7 Q 48 4 56 7" stroke="#ffffff" stroke-width="1.5" fill="none" opacity=".45" stroke-linecap="round"/>
-            <path d="M29 15 Q 48 20 67 15 Q 67 17.5 48 22 Q 29 17.5 29 15 Z" fill="var(--outfit-2)"/>
-            <path d="M36 9 Q 48 12 60 9 L 60 11 Q 48 14 36 11 Z" fill="var(--outfit-2)"/>
-            <rect x="46" y="9.5" width="4" height="4" rx="1" fill="#ffffff" opacity=".7"/>
-          </g>
-
-          <!-- 7 新春福气（特别篇）：朱红盘扣棉袄 + 福字瓜皮帽 -->
-          <g class="outfit" data-outfit="7">
-            <path d="M13 66 C 13 79, 26 96, 48 96 C 70 96, 83 79, 83 66 Q 48 75 13 66 Z" fill="var(--outfit)" filter="url(#clothShadow)"/>
-            <path d="M13 66 C 13 79, 26 96, 48 96 C 70 96, 83 79, 83 66 Q 48 75 13 66 Z" fill="url(#clothShade)"/>
-            <!-- 对襟金边 + 三颗盘扣 -->
-            <path d="M48 66 L 40 58 M 48 66 L 56 58" stroke="var(--outfit-2)" stroke-width="2.5" stroke-linecap="round"/>
-            <path d="M40 58 L 56 58" stroke="var(--outfit-2)" stroke-width="2" fill="none" opacity=".8"/>
-            <circle cx="43" cy="70" r="1.7" fill="var(--outfit-2)"/>
-            <circle cx="48" cy="76" r="1.7" fill="var(--outfit-2)"/>
-            <circle cx="53" cy="82" r="1.7" fill="var(--outfit-2)"/>
-            <!-- 肩头小红穗 -->
-            <path d="M24 68 Q 22 76 25 82" stroke="var(--outfit-2)" stroke-width="1.6" fill="none" stroke-linecap="round"/>
-            <circle cx="25.5" cy="84" r="1.8" fill="var(--outfit-2)"/>
-            <!-- 瓜皮帽：半球 + 金帽檐 + 顶珠 + 帽正 -->
-            <path d="M30 18 Q 31 5 48 5 Q 65 5 66 18 Q 48 13 30 18 Z" fill="var(--outfit)"/>
-            <path d="M28 18 Q 48 24 68 18 Q 68 21 48 26 Q 28 21 28 18 Z" fill="var(--outfit-2)"/>
-            <circle cx="48" cy="5.5" r="2.6" fill="var(--outfit-2)"/>
-            <circle cx="48" cy="5.5" r="1" fill="#ffffff" opacity=".7"/>
-            <rect x="45" y="12" width="6" height="6" rx="1" fill="var(--outfit-2)"/>
-            <path d="M46.6 13.5 L 49.4 16.5 M 49.4 13.5 L 46.6 16.5" stroke="var(--outfit)" stroke-width="1.3" stroke-linecap="round"/>
-          </g>
-
-          <!-- 8 中秋月兔（特别篇）：月白披风 + 兔耳 + 桂花徽章 -->
-          <g class="outfit" data-outfit="8">
-            <path d="M13 66 C 13 79, 26 96, 48 96 C 70 96, 83 79, 83 66 Q 48 75 13 66 Z" fill="var(--outfit)" filter="url(#clothShadow)"/>
-            <path d="M13 66 C 13 79, 26 96, 48 96 C 70 96, 83 79, 83 66 Q 48 75 13 66 Z" fill="url(#clothShade)"/>
-            <!-- 披风系带 + 领结 -->
-            <path d="M34 62 L 40 70 M 62 62 L 56 70" stroke="var(--outfit-2)" stroke-width="2" stroke-linecap="round"/>
-            <circle cx="48" cy="72" r="2.6" fill="var(--outfit-2)"/>
-            <!-- 圆月徽章 -->
-            <circle cx="48" cy="84" r="4.5" fill="var(--outfit-2)" opacity=".9"/>
-            <circle cx="46.5" cy="82.8" r="1.2" fill="var(--outfit)" opacity=".6"/>
-            <!-- 兔耳：一只竖一只弯，白色带粉内耳 -->
-            <path d="M38 20 C 34 8, 36 1, 41 0 C 46 2, 45 12, 43 20 Z" fill="#fffdf6" stroke="var(--outfit-2)" stroke-width="1.2"/>
-            <path d="M40 18 C 38 10, 39 4, 41.5 3 C 44 6, 43.5 13, 42.5 18 Z" fill="#ffc9d6"/>
-            <path d="M58 20 C 63 10, 66 4, 71 5 C 72 10, 66 18, 60 22 Z" fill="#fffdf6" stroke="var(--outfit-2)" stroke-width="1.2"/>
-            <path d="M59.5 19 C 63 12, 65.5 8, 68.5 8 C 69 11, 65 17, 61 20 Z" fill="#ffc9d6"/>
-          </g>
-
-          <!-- 9 派对时光（特别篇）：彩条尖帽 + 彩带披肩 -->
-          <g class="outfit" data-outfit="9">
-            <path d="M13 66 C 13 79, 26 96, 48 96 C 70 96, 83 79, 83 66 Q 48 75 13 66 Z" fill="var(--outfit)" filter="url(#clothShadow)"/>
-            <path d="M13 66 C 13 79, 26 96, 48 96 C 70 96, 83 79, 83 66 Q 48 75 13 66 Z" fill="url(#clothShade)"/>
-            <!-- 披肩彩点 -->
-            <circle cx="26" cy="74" r="2" fill="var(--outfit-2)"/>
-            <circle cx="36" cy="82" r="1.7" fill="#ffffff" opacity=".85"/>
-            <circle cx="48" cy="78" r="2" fill="var(--outfit-2)"/>
-            <circle cx="60" cy="84" r="1.7" fill="#ffffff" opacity=".85"/>
-            <circle cx="70" cy="74" r="2" fill="var(--outfit-2)"/>
-            <!-- 尖帽：斜戴，彩条纹 + 顶球 + 帽檐 -->
-            <path d="M34 20 L 43 -2 L 56 18 Q 45 14 34 20 Z" fill="var(--outfit)"/>
-            <path d="M37.5 12 L 45 9 M 40 4.5 L 47.5 12.5" stroke="var(--outfit-2)" stroke-width="2.2" stroke-linecap="round" opacity=".85"/>
-            <circle cx="43.5" cy="-1.5" r="2.8" fill="var(--outfit-2)"/>
-            <circle cx="43.5" cy="-1.5" r="1.1" fill="#ffffff" opacity=".8"/>
-            <path d="M32 20 Q 46 26 58 19 Q 58 22 45 27 Q 32 23 32 20 Z" fill="var(--outfit-2)"/>
-          </g>
-
-          <!-- 10 雨天出行（特别篇）：明黄雨衣帽 + 水滴纹 -->
-          <g class="outfit" data-outfit="10">
-            <path d="M13 66 C 13 79, 26 96, 48 96 C 70 96, 83 79, 83 66 Q 48 75 13 66 Z" fill="var(--outfit)" filter="url(#clothShadow)"/>
-            <path d="M13 66 C 13 79, 26 96, 48 96 C 70 96, 83 79, 83 66 Q 48 75 13 66 Z" fill="url(#clothShade)"/>
-            <!-- 雨衣门襟与扣子 -->
-            <path d="M48 66 L 48 58" stroke="var(--outfit-2)" stroke-width="2.5" stroke-linecap="round"/>
-            <circle cx="48" cy="72" r="1.8" fill="var(--outfit-2)"/>
-            <circle cx="48" cy="82" r="1.8" fill="var(--outfit-2)"/>
-            <!-- 衣身水滴纹 -->
-            <path d="M30 76 Q 27.5 80 30 82.5 Q 32.5 80 30 76 Z" fill="#ffffff" opacity=".75"/>
-            <path d="M64 78 Q 61.5 82 64 84.5 Q 66.5 82 64 78 Z" fill="#ffffff" opacity=".75"/>
-            <path d="M40 88 Q 38 91 40 93 Q 42 91 40 88 Z" fill="#ffffff" opacity=".6"/>
-            <!-- 雨衣帽：连帽罩头 + 帽檐 + 帽绳小珠 -->
-            <path d="M31 22 Q 29 6 48 4 Q 67 6 65 22 Q 56 15 48 15 Q 40 15 31 22 Z" fill="var(--outfit)"/>
-            <path d="M29 21 Q 48 28 67 21 Q 68 25 48 30 Q 28 25 29 21 Z" fill="var(--outfit-2)" opacity=".9"/>
-            <path d="M33 24 Q 33 32 38 36 M 63 24 Q 63 32 58 36" stroke="var(--outfit-2)" stroke-width="1.4" fill="none" stroke-linecap="round"/>
-            <circle cx="38.5" cy="38" r="1.5" fill="var(--outfit-2)"/>
-            <circle cx="57.5" cy="38" r="1.5" fill="var(--outfit-2)"/>
+          <!-- summer 夏日海边 -->
+          <g class="outfit" data-theme="summer">
+            <g data-slot="bottom">
+              <path d="M39 70 L 57 70 L 59 84 L 51.5 84 L 48 76 L 44.5 84 L 37 84 Z" fill="#f5f5f5" stroke="var(--line)" stroke-width="1.3"/>
+              <path d="M40 74 L 56 74" stroke="#90c8e6" stroke-width="1.6"/>
+            </g>
+            <g data-slot="top">
+              <path d="M39 43 C 37.5 52, 37.5 62, 39 71 L 57 71 C 58.5 62, 58.5 52, 57 43 Q 48 46.5 39 43 Z" fill="#ffdc64" stroke="var(--line)" stroke-width="1.3"/>
+              <path d="M41 50 C 43 54, 45 54, 46 51 M 50 51 C 52 54, 54 54, 55 50" stroke="#5aa0e6" stroke-width="1.4" fill="none"/>
+            </g>
+            <g data-slot="shoes">
+              <path d="M37.5 93 L 47.5 93 L 47 95 Q 42 97 37 95 Z" fill="#5aa0e6" stroke="var(--line)" stroke-width="1.2"/>
+              <path d="M58.5 93 L 48.5 93 L 49 95 Q 54 97 59 95 Z" fill="#5aa0e6" stroke="var(--line)" stroke-width="1.2"/>
+              <path d="M38 92 L 46 92 M 50 92 L 58 92" stroke="#3c78b4" stroke-width="1.2"/>
+            </g>
+            <g data-slot="head">
+              <path d="M30 18 C 32 8, 42 4, 48 4 C 54 4, 64 8, 66 18 L 66 21 L 30 21 Z" fill="#ffe68a" stroke="var(--line)" stroke-width="1.3"/>
+              <path d="M24 21 L 72 21 L 72 24 L 24 24 Z" fill="#ffd23f" stroke="var(--line)" stroke-width="1.2"/>
+            </g>
+            <g data-slot="back">
+              <ellipse cx="48" cy="56" rx="22" ry="9" fill="none" stroke="#78c8e6" stroke-width="4" opacity=".85"/>
+              <ellipse cx="48" cy="56" rx="22" ry="9" fill="none" stroke="#fff" stroke-width="1.2" stroke-dasharray="4 4" opacity=".7"/>
+            </g>
+            <g data-slot="hand">
+              <path d="M66 60 L 72 74 L 62 74 Z" fill="#f0d2ae" stroke="var(--line)" stroke-width="1.1"/>
+              <circle cx="69" cy="57" r="5.5" fill="#ffb8d0" stroke="var(--line)" stroke-width="1.1"/>
+              <circle cx="66.8" cy="56" r="3" fill="#fff0f5"/>
+            </g>
           </g>
         </g>
       </svg>
     </div>
 
-    <button class="dress-btn" id="dressBtn" title="换装" aria-label="换装：切换到下一套主题服装">🎨</button>
-    <button class="close-btn" id="closeBtn" title="隐藏精灵">✕</button>
+    <button class="win-btn" id="dressBtn" title="换装：下一套主题">🎨</button>
+    <button class="win-btn" id="closeBtn" title="隐藏小猫">✕</button>
+
+    <!-- 右键菜单（DOM 实现，不依赖主进程） -->
+    <div class="ctx" id="ctxMenu"></div>
   </div>
 
   <script>
-    /* sprite.js 的逻辑内联在这里：精灵窗结构简单，单独拆文件反而多一层加载。
-       真正的任务数据和排序逻辑在 panel 里的 app.js，这里只读它同步过来的结果。 */
     (function () {
       'use strict';
 
@@ -723,216 +459,269 @@
       const spriteBody = document.getElementById('spriteBody');
       const spriteEl = document.getElementById('sprite');
       const closeBtn = document.getElementById('closeBtn');
-
+      const ctxMenu = document.getElementById('ctxMenu');
       const LABEL_DEFAULT = '现在最该做';
 
-      // 预览模式：?nobubble 隐藏气泡，只看精灵本体（服装总览页用）
-      if (new URLSearchParams(location.search).has('nobubble')) {
-        bubble.style.display = 'none';
-      }
-
-      /* ---------- 气泡文字 ---------- */
-
-      function setText(text) {
-        const isEmpty = !text || text === '先加一件事';
-        const newText = isEmpty ? '先加一件事' : text;
-        const changed = bubbleText.textContent !== newText;
-
-        bubbleText.textContent = newText;
-        bubble.classList.toggle('is-empty', isEmpty);
-
-        if (!changed) return; // 文字没变就不折腾动画
-
-        // 说话动画：文字变化时重播，表示「精灵在跟你讲」
-        spriteBody.classList.remove('talk');
-        void spriteBody.offsetWidth;   // 强制重排，让动画能重新触发
-        spriteBody.classList.add('talk');
-
-        bounce(); // 第一件事换了，精灵兴奋地弹一下
-      }
-
-      /* 弹一下：第一件事变化、换装等愉快时刻共用 */
-      function bounce() {
-        spriteEl.classList.remove('bounce');
-        void spriteEl.offsetWidth;
+      /* ---------- 气泡 ---------- */
+      let labelTimer = null;
+      function showBubble(text) {
+        bubbleText.textContent = text;
+        spriteEl.classList.remove('bounce'); void spriteEl.offsetWidth;
         spriteEl.classList.add('bounce');
       }
-
-      /* ---------- 眨眼 ----------
-         不按固定节拍眨，否则一眼就看出来是循环动画。
-         6–14 秒之间的随机间隔，看起来更像活的。 */
-      function scheduleBlink() {
-        const wait = 6000 + Math.random() * 8000;
-        setTimeout(() => {
-          spriteBody.classList.add('blink');
-          setTimeout(() => spriteBody.classList.remove('blink'), 180);
-          scheduleBlink();
-        }, wait);
+      function flashLabel(text) {
+        bubbleLabel.textContent = text;
+        clearTimeout(labelTimer);
+        labelTimer = setTimeout(() => { bubbleLabel.textContent = LABEL_DEFAULT; }, 1600);
       }
-
-      /* ---------- 交互 ---------- */
-
-      // 点气泡 = 打开任务面板
       bubble.addEventListener('click', () => {
         if (window.priorityPal) window.priorityPal.openPanel();
       });
 
-      // 点关闭 = 隐藏精灵（不是退出程序，托盘里还能叫回来）
+      /* ---------- 本体四帧切换（动画只绘制本体） ---------- */
+      const frames = {};
+      document.querySelectorAll('.frame').forEach((g) => { frames[g.dataset.frame] = g; });
+      let currentFrame = 'idle';
+      let pomPhase = 'idle';
+      let sleeping = false;
+      function setFrame(name) {
+        if (!frames[name] || name === currentFrame) return;
+        frames[currentFrame].classList.remove('is-on');
+        frames[name].classList.add('is-on');
+        currentFrame = name;
+      }
+      /* 眨眼：随机 2.5–6s 闭眼 0.15s（仅空闲时） */
+      (function scheduleBlink() {
+        setTimeout(() => {
+          if (pomPhase === 'idle' && !sleeping) {
+            setFrame('blink');
+            setTimeout(() => setFrame('idle'), 150);
+          }
+          scheduleBlink();
+        }, 2500 + Math.random() * 3500);
+      })();
+
+      /* ---------- 长时间无操作 → 休眠打哈欠 ---------- */
+      let lastActive = Date.now();
+      ['mousedown', 'mousemove', 'keydown'].forEach((evt) =>
+        window.addEventListener(evt, () => { lastActive = Date.now(); if (sleeping) wake(); }));
+      setInterval(() => {
+        if (pomPhase !== 'idle') { sleeping = false; if (currentFrame !== 'focus') setFrame('idle'); return; }
+        if (!sleeping && Date.now() - lastActive > 90000) {
+          sleeping = true;
+          setFrame('sleep');
+          showBubble('Zzz…（点我醒来）');
+        }
+      }, 5000);
+      function wake() {
+        lastActive = Date.now();
+        if (sleeping) { sleeping = false; setFrame(pomPhase === 'focus' ? 'focus' : 'idle'); }
+      }
+
+      /* ---------- 服装系统（渲染层级：本体→尾巴→下装→上衣→鞋→头→背→手） ---------- */
+      const THEMES = ['daily', 'school', 'home', 'halloween', 'christmas', 'sport', 'idol', 'summer'];
+      const THEME_NAMES = { daily: '日常休闲', school: '校园学霸', home: '居家慵懒', halloween: '万圣节',
+                            christmas: '圣诞', sport: '运动活力', idol: '偶像打歌', summer: '夏日海边' };
+      const SLOTS = ['head', 'top', 'bottom', 'shoes', 'back', 'hand'];
+      const OUTFIT_KEY = 'cat-outfit';
+      let outfit = { mode: 'theme', theme: 'daily', parts: {} };
+      try {
+        const saved = JSON.parse(localStorage.getItem(OUTFIT_KEY) || 'null');
+        if (saved) outfit = saved;
+      } catch (err) { /* 忽略 */ }
+
+      function applyOutfit() {
+        document.querySelectorAll('.outfit').forEach((g) => {
+          const on = outfit.mode === 'theme' ? g.dataset.theme === outfit.theme : false;
+          g.classList.toggle('is-on', on);
+          if (outfit.mode === 'theme') {
+            g.querySelectorAll('[data-slot]').forEach((p) => { p.style.display = ''; });
+          }
+        });
+        if (outfit.mode === 'custom') {
+          // 自由拼装：点亮含选中部件的主题组，并只显示被选中的槽位
+          const chosen = outfit.parts || {};
+          document.querySelectorAll('.outfit').forEach((g) => {
+            let has = false;
+            g.querySelectorAll('[data-slot]').forEach((part) => {
+              const slot = part.dataset.slot;
+              const show = chosen[slot] && chosen[slot] === `themes/${g.dataset.theme}/${slot}.png`;
+              part.style.display = show ? '' : 'none';
+              if (show) has = true;
+            });
+            g.classList.toggle('is-on', has);
+          });
+        }
+        try { localStorage.setItem(OUTFIT_KEY, JSON.stringify(outfit)); } catch (err) { /* 忽略 */ }
+      }
+
+      function setTheme(theme) {
+        outfit = { mode: 'theme', theme, parts: {} };
+        applyOutfit();
+        flashLabel(THEME_NAMES[theme]);
+        showBubble(`换上「${THEME_NAMES[theme]}」啦~`);
+      }
+      function setPart(slot, rel) {
+        outfit.mode = 'custom';
+        if (rel) outfit.parts[slot] = rel;
+        else delete outfit.parts[slot];
+        applyOutfit();
+        flashLabel('自由搭配');
+      }
+
+      /* ---------- 番茄状态联动（面板写 localStorage，这里 storage 事件接收） ---------- */
+      function onPomState(state) {
+        pomPhase = state;
+        if (state === 'focus') { setFrame('focus'); showBubble('专注模式，喵~'); }
+        else if (state === 'rest') { setFrame('idle'); showBubble('休息一下~'); }
+        else setFrame('idle');
+      }
+      try { pomPhase = localStorage.getItem('pom-state') || 'idle'; } catch (err) {}
+      setFrame(pomPhase === 'focus' ? 'focus' : 'idle');
+      window.addEventListener('storage', (e) => {
+        if (e.key === 'pom-state') onPomState(e.newValue || 'idle');
+      });
+
+      /* ---------- 闲逛：沿屏幕底部缓慢来回（经主进程移动窗口） ---------- */
+      let wanderDir = 1, wanderPause = 0;
+      setInterval(() => {
+        if (pomPhase === 'focus' || sleeping || !window.priorityPal) return;
+        if (wanderPause > 0) { wanderPause--; return; }
+        if (Math.random() < 0.05) { wanderPause = 20 + Math.random() * 80; return; }
+        if (Math.random() < 0.1) wanderDir *= -1;
+        window.priorityPal.moveSprite(window.screenX + wanderDir * 36, window.screenY);
+      }, 1600);
+
+      /* ---------- 交互：左键弹跳+拖拽 / 双击面板 / 右键菜单 ---------- */
+      let dragOrigin = null;
+      spriteEl.addEventListener('mousedown', (event) => {
+        if (event.button !== 0) return;
+        wake();
+        hideMenu();
+        dragOrigin = { winX: window.screenX, winY: window.screenY, mx: event.screenX, my: event.screenY };
+        event.preventDefault();
+      });
+      window.addEventListener('mousemove', (event) => {
+        if (!dragOrigin || !window.priorityPal) return;
+        window.priorityPal.moveSprite(dragOrigin.winX + event.screenX - dragOrigin.mx,
+                                      dragOrigin.winY + event.screenY - dragOrigin.my);
+      });
+      window.addEventListener('mouseup', () => {
+        if (dragOrigin) spriteEl.classList.add('bounce');   // 松手开心弹一下
+        dragOrigin = null;
+      });
+      spriteEl.addEventListener('dblclick', () => {
+        if (window.priorityPal) window.priorityPal.openPanel();
+      });
+
+      /* ---------- 右键菜单 ---------- */
+      function hideMenu() { ctxMenu.style.display = 'none'; }
+      document.addEventListener('click', hideMenu);
+      document.addEventListener('contextmenu', (event) => {
+        event.preventDefault();
+        wake();
+        buildMenu();
+        ctxMenu.style.display = 'block';
+        ctxMenu.style.left = Math.min(event.clientX, window.innerWidth - ctxMenu.offsetWidth - 4) + 'px';
+        ctxMenu.style.top = Math.min(event.clientY, window.innerHeight - ctxMenu.offsetHeight - 4) + 'px';
+      });
+
+      function buildMenu() {
+        ctxMenu.innerHTML = '';
+        // 整套主题换装
+        const themeGroup = document.createElement('div');
+        themeGroup.className = 'group';
+        const themeBtn = document.createElement('button');
+        themeBtn.className = 'item'; themeBtn.textContent = '整套主题换装';
+        themeGroup.appendChild(themeBtn);
+        const themeSub = document.createElement('div');
+        themeSub.className = 'sub';
+        THEMES.forEach((key) => {
+          const b = document.createElement('button');
+          b.className = 'item';
+          b.textContent = (outfit.mode === 'theme' && outfit.theme === key ? '✓ ' : '') + THEME_NAMES[key];
+          b.addEventListener('click', () => { setTheme(key); hideMenu(); });
+          themeSub.appendChild(b);
+        });
+        themeGroup.appendChild(themeSub);
+        ctxMenu.appendChild(themeGroup);
+        // 自由搭配（6 槽位 × 8 主题的部件池）
+        const mixGroup = document.createElement('div');
+        mixGroup.className = 'group';
+        const mixBtn = document.createElement('button');
+        mixBtn.className = 'item'; mixBtn.textContent = '自由搭配';
+        mixGroup.appendChild(mixBtn);
+        const mixSub = document.createElement('div');
+        mixSub.className = 'sub';
+        const SLOT_NAMES = { head: '头部配饰', top: '上衣', bottom: '下装', shoes: '鞋子', back: '背饰', hand: '手持物' };
+        SLOTS.forEach((slot) => {
+          const g = document.createElement('div');
+          g.className = 'group';
+          const b = document.createElement('button');
+          b.className = 'item'; b.textContent = SLOT_NAMES[slot];
+          g.appendChild(b);
+          const sub = document.createElement('div');
+          sub.className = 'sub';
+          const none = document.createElement('button');
+          none.className = 'item'; none.textContent = '(不佩戴)';
+          none.addEventListener('click', () => { setPart(slot, null); hideMenu(); });
+          sub.appendChild(none);
+          THEMES.forEach((key) => {
+            const b2 = document.createElement('button');
+            b2.className = 'item'; b2.textContent = THEME_NAMES[key];
+            b2.addEventListener('click', () => { setPart(slot, `themes/${key}/${slot}.png`); hideMenu(); });
+            sub.appendChild(b2);
+          });
+          g.appendChild(sub);
+          mixSub.appendChild(g);
+        });
+        mixGroup.appendChild(mixSub);
+        ctxMenu.appendChild(mixGroup);
+        // 快速番茄 + 退出
+        const pom = document.createElement('button');
+        pom.className = 'item'; pom.textContent = '快速启动番茄钟';
+        pom.addEventListener('click', () => {
+          try { localStorage.setItem('pom-command', 'start'); } catch (err) {}
+          showBubble('番茄钟已启动！');
+          hideMenu();
+        });
+        ctxMenu.appendChild(pom);
+        const quit = document.createElement('button');
+        quit.className = 'item'; quit.textContent = '退出程序';
+        quit.addEventListener('click', () => { window.close(); });
+        ctxMenu.appendChild(quit);
+      }
+
+      /* ---------- 面板推来的任务更新（IPC，保持原有通道） ---------- */
+      if (window.priorityPal) {
+        window.priorityPal.onTaskUpdate((payload) => {
+          if (payload && typeof payload.firstTask === 'string' && payload.firstTask) {
+            bubbleText.textContent = payload.firstTask;
+          }
+        });
+        window.priorityPal.requestState().then((state) => {
+          if (state && typeof state.firstTask === 'string' && state.firstTask) {
+            bubbleText.textContent = state.firstTask;
+          }
+        }).catch(() => { /* 面板未开 */ });
+      }
+
       closeBtn.addEventListener('click', (event) => {
         event.stopPropagation();
         if (window.priorityPal) window.priorityPal.hideSprite();
       });
-
-      /* ---------- 拖动精灵 ----------
-         透明无边框窗口没法靠系统标题栏拖。
-         这里用「鼠标按下时的窗口位置 + 鼠标位移量」算出新位置，再交给主进程。
-         注意用 screenX/screenY（屏幕坐标），不是 clientX/clientY（窗口内坐标），
-         后者在窗口移动过程中会自己变化，用它算会抖。 */
-      let dragOrigin = null;
-
-      spriteEl.addEventListener('mousedown', (event) => {
-        if (event.button !== 0) return;
-        dragOrigin = {
-          winX: window.screenX,
-          winY: window.screenY,
-          mouseX: event.screenX,
-          mouseY: event.screenY,
-        };
-        event.preventDefault();
-      });
-
-      window.addEventListener('mousemove', (event) => {
-        if (!dragOrigin || !window.priorityPal) return;
-        const dx = event.screenX - dragOrigin.mouseX;
-        const dy = event.screenY - dragOrigin.mouseY;
-        window.priorityPal.moveSprite(dragOrigin.winX + dx, dragOrigin.winY + dy);
-      });
-
-      window.addEventListener('mouseup', () => { dragOrigin = null; });
-
-      /* ---------- 服装系统 ----------
-         精灵本色（身体/脸/眼睛/高光/气泡底色与正文色）是固定的，
-         全部定义在上方 :root 的 CSS 默认值里，换装一个都不动；
-         换装只切两样东西：
-           1. 服装造型（.outfit 加 is-on 淡入）+ 服装配色（--outfit / --outfit-2）
-           2. 气泡标签与边框色（用服装色呼应主题）
-         叶芽（草）是初始主题「玩趣明快」的专属头饰，其他主题有自己的帽子/花环。
-         注意：sprite-theme 的跨窗口联动只在同源窗口间生效（Electron 面板）；
-         网页版部署在云端域名下，与本应用不同源，收不到 storage 事件——
-         三端真正联动需要后端同步主题状态，当前未实现。 */
-      const THEME_KEY = 'sprite-theme';
-      const API_BASE = 'https://yuanjian-d5gdhcntg91022662.service.tcloudbase.com';
-      // 站点访问令牌（Day 23+ 接口鉴权后必须带上，否则 /api/theme 一律 401）
-      const APP_TOKEN = '81ad6640e81a92f614190806e95eac7938463655a73b33e7';
-      // 服装顺序与面板 7 套主题一一对应：换装时把索引换成主题 id 同步到云端
-      const THEME_IDS = ['play', 'minimal', 'editorial', 'dark', 'nature', 'retro', 'luxe'];
-      const OUTFITS = [
-        { name: '玩趣明快', main: '#ff5c3a', sub: '#ffd23f' },
-        { name: '极致极简', main: '#555555', sub: '#9a9a9a' },
-        { name: '杂志编辑', main: '#b3402a', sub: '#2a2218' },
-        { name: '暗夜',     main: '#4a5a8a', sub: '#6ea8fe' },
-        { name: '自然有机', main: '#7a9b6d', sub: '#c8b98a' },
-        { name: '复古未来', main: '#39ff88', sub: '#00e5ff' },
-        { name: '轻奢雅致', main: '#b8923f', sub: '#e0c68a' },
-        // —— 特别篇：只在精灵换装里循环，不对应面板主题，不上云 ——
-        { name: '新春福气', main: '#d8402a', sub: '#ffd23f' },
-        { name: '中秋月兔', main: '#dfe7f5', sub: '#f5c542' },
-        { name: '派对时光', main: '#7c5cff', sub: '#ff6fb0' },
-        { name: '雨天出行', main: '#ffce3f', sub: '#4a90d9' },
-      ];
-
-      function applyTheme(idx) {
-        const outfit = OUTFITS[idx];
-        if (!outfit) return;
-        const root = document.documentElement.style;
-        root.setProperty('--outfit', outfit.main);
-        root.setProperty('--outfit-2', outfit.sub);
-        root.setProperty('--bubble-label', outfit.main);
-        root.setProperty('--bubble-line', outfit.main + '55');
-
-        // 服装淡入淡出（opacity 过渡，不瞬切）
-        document.querySelectorAll('.outfit').forEach((g) => {
-          g.classList.toggle('is-on', g.dataset.outfit === String(idx));
-        });
-
-        // 叶芽（草）只属于初始主题「玩趣明快」
-        const sproutEl = document.querySelector('.sprout');
-        if (sproutEl) sproutEl.style.display = idx === 0 ? '' : 'none';
-
-        try { localStorage.setItem(THEME_KEY, String(idx)); } catch (err) { /* 忽略 */ }
-      }
-
-      // 把主题写到云端：fire-and-forget，失败静默（离线时本地换装依然生效）
-      function syncThemeToServer(id) {
-        if (!id) return; // 特别篇服装没有对应主题，不上云
-        fetch(`${API_BASE}/api/theme`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'X-App-Token': APP_TOKEN },
-          body: JSON.stringify({ theme: id }),
-        }).catch(() => { /* 离线/网关异常时静默 */ });
-      }
-
-      // 从云端拉当前主题（云端 = 三端共享真相）：只启动时拉一次，不做轮询
-      function pullThemeFromServer() {
-        fetch(`${API_BASE}/api/theme`, { headers: { 'X-App-Token': APP_TOKEN } })
-          .then((r) => (r.ok ? r.json() : null))
-          .then((payload) => {
-            if (!payload || !payload.ok) return;
-            const id = payload.data && payload.data.theme;
-            const serverIdx = THEME_IDS.indexOf(id);
-            if (serverIdx >= 0 && serverIdx !== themeIdx) {
-              themeIdx = serverIdx;
-              applyTheme(themeIdx);
-            }
-          })
-          .catch(() => { /* 离线时忽略 */ });
-      }
-
-      // 换装：点一下循环切到下一套服装；精灵弹一下，气泡标签短暂显示服装名
-      const dressBtn = document.getElementById('dressBtn');
-      let themeIdx = 0;
-      let labelTimer = null;
-
-      dressBtn.addEventListener('click', (event) => {
+      document.getElementById('dressBtn').addEventListener('click', (event) => {
         event.stopPropagation();
-        themeIdx = (themeIdx + 1) % OUTFITS.length;
-        applyTheme(themeIdx);
-        bounce();
-        clearTimeout(labelTimer);
-        bubbleLabel.textContent = OUTFITS[themeIdx].name;
-        labelTimer = setTimeout(() => { bubbleLabel.textContent = LABEL_DEFAULT; }, 1400);
-        // 同步到云端：网页版等其余端在下次启动时跟上
-        syncThemeToServer(THEME_IDS[themeIdx]);
+        const cur = outfit.mode === 'theme' ? outfit.theme : 'daily';
+        setTheme(THEMES[(THEMES.indexOf(cur) + 1) % THEMES.length]);
       });
 
-      /* ---------- 接收面板推过来的任务更新 ---------- */
-
-      if (window.priorityPal) {
-        window.priorityPal.onTaskUpdate((payload) => {
-          if (payload && typeof payload.firstTask === 'string') setText(payload.firstTask);
-        });
-
-        // 启动时主动拉一次：精灵先开、面板后开的情况下，也能拿到正确的第一件事
-        window.priorityPal.requestState().then((state) => {
-          if (state && typeof state.firstTask === 'string') setText(state.firstTask);
-        }).catch(() => { /* 面板还没开，保持默认文案 */ });
-      }
-
-      // 启动时恢复上次选的服装，再向云端对齐（云端 = 三端共享真相，最后写入者胜）
-      // ?outfit=N：预览/测试用，直接指定服装且不向云端对齐（不影响日常使用）
-      let previewLock = false;
+      applyOutfit();
+      // 预览/测试：?theme=<key> 直接指定主题（不影响保存的穿搭）
       try {
-        const q = new URLSearchParams(location.search).get('outfit');
-        if (q !== null && OUTFITS[+q]) { themeIdx = +q; previewLock = true; }
-        else {
-          const saved = parseInt(localStorage.getItem(THEME_KEY) || '0', 10);
-          if (OUTFITS[saved]) themeIdx = saved;
-        }
+        const q = new URLSearchParams(location.search).get('theme');
+        if (q && THEMES.includes(q)) { outfit = { mode: 'theme', theme: q, parts: {} }; applyOutfit(); }
       } catch (err) { /* 忽略 */ }
-      applyTheme(themeIdx);
-      if (!previewLock) pullThemeFromServer();
-
-      scheduleBlink();
     })();
   </script>
 </body>

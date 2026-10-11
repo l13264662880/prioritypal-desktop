@@ -2,40 +2,30 @@
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
-<title>PriorityPal 精灵服装总览（11 套）</title>
+<title>PriorityPal 小猫桌宠 · 8 套主题总览</title>
 <style>
-  body { font-family: "Microsoft YaHei", sans-serif; background: linear-gradient(180deg,#f6f3ec,#eee9dd); margin:0; padding:16px 22px; color:#3a332b; }
+  body { font-family:"Microsoft YaHei",sans-serif; background:linear-gradient(180deg,#f6f3ec,#eee9dd); margin:0; padding:16px 22px; color:#3a332b; }
   h1 { font-size:19px; margin:0 0 2px; }
   .sub { color:#8a8073; font-size:12px; margin-bottom:10px; }
-  h2 { font-size:14px; margin:10px 0 6px; color:#6b5f4e; border-left:4px solid #d8b25e; padding-left:8px; }
   .grid { display:grid; grid-template-columns:repeat(4, 150px); gap:8px; }
   .card { background:#fffdf8; border:1px solid #e6ddc9; border-radius:10px; padding:4px 6px 5px; text-align:center; box-shadow:0 2px 6px rgba(120,90,30,.08); }
-  .card iframe { width:128px; height:120px; border:none; background:transparent; margin-top:-14px; }
+  .card iframe { width:128px; height:120px; border:none; background:transparent; margin-top:-10px; }
   .card .name { font-size:12.5px; font-weight:bold; }
   .card .desc { font-size:10.5px; color:#9a9080; margin-top:0; }
 </style>
 </head>
 <body>
-<h1>PriorityPal 桌宠精灵 · 服装总览</h1>
-<div class="sub">本体是「奶黄包 + 头顶豆芽」的 Q 版形象；7 套主题篇对应面板主题，4 套特别篇只在精灵换装里循环 · 2026-10-11</div>
-
-<h2>主题篇（与面板 7 套主题一一对应，三端联动）</h2>
-<div class="grid">
-  <div class="card"><iframe src="src/sprite.html?outfit=0&nobubble"></iframe><div class="name">玩趣明快</div><div class="desc">珊瑚橙连衣裙 + 蝴蝶结</div></div>
-  <div class="card"><iframe src="src/sprite.html?outfit=1&nobubble"></iframe><div class="name">极致极简</div><div class="desc">素灰长袍 + 围巾</div></div>
-  <div class="card"><iframe src="src/sprite.html?outfit=2&nobubble"></iframe><div class="name">杂志编辑</div><div class="desc">朱砂马甲 + 贝雷帽</div></div>
-  <div class="card"><iframe src="src/sprite.html?outfit=3&nobubble"></iframe><div class="name">暗夜</div><div class="desc">深蓝斗篷 + 星月尖帽</div></div>
-  <div class="card"><iframe src="src/sprite.html?outfit=4&nobubble"></iframe><div class="name">自然有机</div><div class="desc">苔藓围裙 + 花环</div></div>
-  <div class="card"><iframe src="src/sprite.html?outfit=5&nobubble"></iframe><div class="name">复古未来</div><div class="desc">霓虹铠甲 + 护目镜</div></div>
-  <div class="card"><iframe src="src/sprite.html?outfit=6&nobubble"></iframe><div class="name">轻奢雅致</div><div class="desc">金色礼服 + 礼帽</div></div>
-</div>
-
-<h2>特别篇（精灵限定，换装按钮循环切换）</h2>
-<div class="grid">
-  <div class="card"><iframe src="src/sprite.html?outfit=7&nobubble"></iframe><div class="name">新春福气</div><div class="desc">盘扣棉袄 + 福字瓜皮帽</div></div>
-  <div class="card"><iframe src="src/sprite.html?outfit=8&nobubble"></iframe><div class="name">中秋月兔</div><div class="desc">月白披风 + 兔耳</div></div>
-  <div class="card"><iframe src="src/sprite.html?outfit=9&nobubble"></iframe><div class="name">派对时光</div><div class="desc">彩条尖帽 + 彩点披肩</div></div>
-  <div class="card"><iframe src="src/sprite.html?outfit=10&nobubble"></iframe><div class="name">雨天出行</div><div class="desc">明黄雨衣帽 + 水滴纹</div></div>
-</div>
+<h1>拟人小猫桌宠 · 8 套主题总览</h1>
+<div class="sub">奶白小猫 + 分层换装（本体→尾巴→下装→上衣→鞋→头饰→背饰→手持）· 2026-10-11</div>
+<div class="grid" id="grid"></div>
+<script>
+const T = [["daily","日常休闲","卫衣+牛仔裤+奶茶"],["school","校园学霸","西装+学士帽+书包"],["home","居家慵懒","毛衣+睡裤+热水袋"],["halloween","万圣节","魔女袍+尖帽+南瓜灯"],["christmas","圣诞","圣诞袍+鹿角+礼物"],["sport","运动活力","球衣+护腕+篮球"],["idol","偶像打歌","演出服+翅膀+荧光棒"],["summer","夏日海边","T恤+泳圈+冰淇淋"]];
+const g = document.getElementById("grid");
+T.forEach(([key,name,desc]) => {
+  const d = document.createElement("div"); d.className = "card";
+  d.innerHTML = '<iframe src="src/sprite.html?theme='+key+'"></iframe><div class="name">'+name+'</div><div class="desc">'+desc+'</div>';
+  g.appendChild(d);
+});
+</script>
 </body>
 </html>

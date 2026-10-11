@@ -43,6 +43,13 @@
     }
     el.phase.textContent = phaseText;
     el.toggle.textContent = running ? '暂停' : (fresh ? '开始' : '继续');
+    syncState(); // 桌宠联动：把当前阶段写给小猫窗口（storage 事件跨窗口）
+  }
+
+  /* 桌宠联动：state = idle | focus | rest（小猫据此切换待机/专注/休闲动画） */
+  function syncState() {
+    const state = running ? (phase === 'focus' ? 'focus' : 'rest') : 'idle';
+    try { localStorage.setItem('pom-state', state); } catch (err) { /* 忽略 */ }
   }
 
   /* 一个阶段走完，切到下一阶段（专注→休息→专注），专注完成时记一笔 */
@@ -106,6 +113,14 @@
 
   el.toggle.addEventListener('click', () => (running ? pause() : start()));
   el.reset.addEventListener('click', reset);
+
+  /* 桌宠右键「快速启动番茄钟」：小猫窗口写 pom-command，这里收到后重置并开始 */
+  window.addEventListener('storage', (e) => {
+    if (e.key === 'pom-command' && e.newValue === 'start') {
+      reset();
+      start();
+    }
+  });
 
   render();
 })();
