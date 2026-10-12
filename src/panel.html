@@ -93,25 +93,53 @@
         autocomplete="off"
         spellcheck="false"
       />
+      <!-- 备注 / 预估时长 / 优先级：可留空，回车或点添加都按当前值提交 -->
+      <div class="add-fields">
+        <input type="text" id="noteInput" placeholder="备注（可选）" autocomplete="off" />
+        <input type="number" id="estimateInput" placeholder="预估分钟" min="1" max="1440" />
+        <select id="prioritySelect" aria-label="优先级">
+          <option value="高">高优先级</option>
+          <option value="中" selected>中优先级</option>
+          <option value="低">低优先级</option>
+        </select>
+      </div>
       <!-- AI 录入的实时识别提示：输入带「截止/时长」的话时显示，由 app.js 控制 -->
       <p class="parse-hint" id="parseHint" hidden></p>
     </form>
 
-    <!-- 智能排序：工具按截止时间给初始顺序当起点，用户仍可拖拽微调（预排序，不代排） -->
+    <!-- 智能排序 + 清空已完成 -->
     <div class="sort-bar">
       <button type="button" class="sort-btn" id="sortBtn">按截止时间排序</button>
+      <button type="button" class="sort-btn" id="clearDoneBtn">清空已完成</button>
     </div>
 
-    <!-- 番茄专注：25 分钟专注 + 5 分钟休息，完成一次记一笔 -->
+    <!-- 番茄专注：时长可自定义，支持自动循环 -->
     <div class="pomodoro">
       <div class="pomodoro-head">
         <span class="pomodoro-name">番茄专注</span>
         <span class="pomodoro-phase" id="pomoPhase">待开始</span>
       </div>
       <div class="pomodoro-time" id="pomoTime">25:00</div>
+      <div class="pomodoro-settings">
+        <label>专注 <input type="number" id="focusMinInput" min="1" max="180" value="25" /> 分</label>
+        <label>休息 <input type="number" id="restMinInput" min="1" max="60" value="5" /> 分</label>
+        <label class="pomo-auto"><input type="checkbox" id="autoLoopInput" /> 自动循环</label>
+      </div>
       <div class="pomodoro-actions">
         <button type="button" class="pomo-btn" id="pomoToggle">开始</button>
         <button type="button" class="pomo-btn" id="pomoReset">重置</button>
+      </div>
+    </div>
+
+    <!-- 单任务正计时：选中一条任务独立计时，累计耗时存进该任务 -->
+    <div class="task-timer" id="taskTimerBar">
+      <div class="task-timer-head">
+        <span class="task-timer-name">任务计时</span>
+        <span class="task-timer-target" id="timerTarget">未选中任务</span>
+      </div>
+      <div class="task-timer-row">
+        <span class="task-timer-clock" id="timerClock">00:00</span>
+        <button type="button" class="pomo-btn" id="timerToggle" disabled>开始计时</button>
       </div>
     </div>
 
@@ -150,6 +178,7 @@
   </main>
 
   <script src="theme.js"></script>
+  <script src="store.js"></script>
   <script src="parse.js"></script>
   <script src="pomodoro.js"></script>
   <script src="mood.js"></script>

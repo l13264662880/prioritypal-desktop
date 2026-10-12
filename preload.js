@@ -40,6 +40,15 @@ contextBridge.exposeInMainWorld('priorityPal', {
     return () => ipcRenderer.removeListener('task:update', handler);
   },
 
+  /* ---- 本地 JSON 持久化（渲染层无文件权限，走主进程）---- */
+
+  /* 读整份数据（任务 + 番茄配置）；文件不存在返回 null */
+  store: {
+    load: () => ipcRenderer.invoke('store:load'),
+    save: (data) => ipcRenderer.invoke('store:save', data),
+    path: () => ipcRenderer.invoke('store:path'),
+  },
+
   /* 告诉渲染层「我跑在桌面壳里」，网页版不会有这个对象 */
   isDesktop: true,
 });

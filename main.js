@@ -19,6 +19,15 @@
 const { app, BrowserWindow, ipcMain, Tray, Menu, screen, nativeImage } = require('electron');
 const path = require('path');
 
+/* 自动化验证模式（tools/verify-modules.js 用）：
+   --pp-test 时用独立数据目录 + 开调试端口 + 启动就开面板，便于脚本驱动。
+   正常启动完全不受影响。 */
+const IS_TEST = process.argv.includes('--pp-test');
+if (IS_TEST) {
+  if (process.env.PP_USER_DATA) app.setPath('userData', process.env.PP_USER_DATA);
+  app.commandLine.appendSwitch('remote-debugging-port', '9333');
+}
+
 /* ---------------- 启动前的图形开关（必须在 app.whenReady() 之前调用） ----------------
    桌面精灵是「透明 + 无边框 + 常驻置顶」的小窗，对 GPU 的依赖很低，
    但 GPU 一旦起不来，Electron 会直接 FATAL 退出（实测报
@@ -211,10 +220,43 @@ ipcMain.handle('sprite:request-state', async () => {
   return null;
 });
 
+/* ---------------- 本地 JSON 持久化（任务 + 番茄配置） ----------------
+   渲染层没有文件权限（contextIsolation 安全配置），所以读写统一走这里。
+   文件落在 Electron 的 userData 目录，重装/清缓存都不会丢。 */
+const fs = require('fs');
+const DATA_FILE = path.join(app.getPath('userData'), 'prioritypal-data.json');
+
+ipcMain.handle('store:load', () => {
+  try {
+    if (!fs.existsSync(DATA_FILE)) return null;
+    return JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
+  } catch (err) {
+    console.warn('读取数据文件失败，按空数据处理：', err.message);
+    return null;
+  }
+});
+
+ipcMain.handle('store:save', (_event, data) => {
+  try {
+    // 先写临时文件再改名：写一半断电也不会留下损坏的 json
+    const tmp = DATA_FILE + '.tmp';
+    fs.writeFileSync(tmp, JSON.stringify(data, null, 2), 'utf8');
+    fs.renameSync(tmp, DATA_FILE);
+    return { ok: true, path: DATA_FILE };
+  } catch (err) {
+    console.warn('保存数据文件失败：', err.message);
+    return { ok: false, error: err.message };
+  }
+});
+
+/* 数据文件实际路径（给「打开数据目录」之类的后续功能留口） */
+ipcMain.handle('store:path', () => DATA_FILE);
+
 /* ---------------- 应用生命周期 ---------------- */
 
 app.whenReady().then(() => {
   createSpriteWindow();
+  if (IS_TEST) createPanelWindow();   // 验证模式：面板同时开出来给脚本驱动
   createTray();
 
   app.on('activate', () => {

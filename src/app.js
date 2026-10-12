@@ -19,13 +19,18 @@
 (() => {
   'use strict';
 
-  /* localStorage 里的键名。任务内容、顺序、完成状态都存在这一个键下。 */
-  const STORAGE_KEY = 'todo-queue-v1';
+  /* 存储统一走 PPStore（store.js）：
+     桌面版写本地 JSON 文件，网页版回落 localStorage，旧数据自动迁移。
+     内存里的真相是 PPStore.state.tasks，本文件只持有引用。 */
+  const PP = window.PPStore;
 
   const el = {
     focusText: document.getElementById('focusText'),
     form: document.getElementById('addForm'),
     input: document.getElementById('taskInput'),
+    noteInput: document.getElementById('noteInput'),
+    estimateInput: document.getElementById('estimateInput'),
+    prioritySelect: document.getElementById('prioritySelect'),
     list: document.getElementById('taskList'),
     emptyHint: document.getElementById('emptyHint'),
     undoBar: document.getElementById('undoBar'),
@@ -33,6 +38,10 @@
     undoBtn: document.getElementById('undoBtn'),
     parseHint: document.getElementById('parseHint'),
     sortBtn: document.getElementById('sortBtn'),
+    clearDoneBtn: document.getElementById('clearDoneBtn'),
+    timerTarget: document.getElementById('timerTarget'),
+    timerClock: document.getElementById('timerClock'),
+    timerToggle: document.getElementById('timerToggle'),
   };
 
   /* 任务队列。数组的顺序就是位置，位置就是优先级。 */
@@ -53,34 +62,14 @@
 
   /* ---------------- 存取 ---------------- */
 
+  /* 启动时由 PPStore 把数据读进内存；这里只做一次引用同步 */
   function load() {
-    try {
-      const raw = localStorage.getItem(STORAGE_KEY);
-      const data = raw ? JSON.parse(raw) : [];
-      tasks = Array.isArray(data)
-        ? data
-            .filter((t) => t && typeof t.text === 'string')
-            .map((t) => ({
-              id: t.id || makeId(),
-              text: t.text,
-              done: !!t.done,
-              due: t.due || null,        // 旧数据没有这两个字段，读进来补成 null
-              estimate: t.estimate || null,
-            }))
-        : [];
-    } catch (err) {
-      // 本地数据坏了就当作空列表，页面不能因此打不开
-      console.warn('读取本地任务失败，已按空列表处理：', err);
-      tasks = [];
-    }
+    tasks = PP.state.tasks;
   }
 
   function save() {
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(tasks));
-    } catch (err) {
-      console.warn('保存任务失败：', err);
-    }
+    PP.state.tasks = tasks;
+    PP.save();
   }
 
   function makeId() {
@@ -160,18 +149,36 @@
     return `${h} 小时 ${rem} 分钟`;
   }
 
-  /* 任务行下方的小字标签：截止 / 时长。都没有就返回 null，不占地方。 */
+  /* 任务行下方的小字标签：优先级 / 备注 / 截止 / 时长 / 累计耗时。
+     都没有就返回 null，不占地方。 */
   function buildMeta(task) {
     const parts = [];
     const due = formatDue(task.due);
     const est = formatEstimate(task.estimate);
+    if (task.priority && task.priority !== '中') parts.push(`${task.priority}优先`);
     if (due) parts.push(`截止 ${due}`);
     if (est) parts.push(`约 ${est}`);
-    if (!parts.length) return null;
+    if (task.spent > 0) parts.push(`已计 ${formatClock(task.spent)}`);
+    if (!parts.length && !task.note) return null;
     const meta = document.createElement('span');
     meta.className = 'task-meta';
     meta.textContent = parts.join(' · ');
+    if (task.note) {
+      const note = document.createElement('span');
+      note.className = 'task-note';
+      note.textContent = task.note;
+      meta.appendChild(note);
+    }
     return meta;
+  }
+
+  /* 秒 → mm:ss（超过 1 小时 → hh:mm:ss） */
+  function formatClock(sec) {
+    const s = Math.max(0, Math.floor(sec));
+    const m = Math.floor(s / 60), ss = s % 60;
+    const h = Math.floor(m / 60), mm = m % 60;
+    const pad = (n) => String(n).padStart(2, '0');
+    return h ? `${h}:${pad(mm)}:${pad(ss)}` : `${pad(mm)}:${pad(ss)}`;
   }
 
   function buildRow(task, index) {
@@ -208,6 +215,7 @@
       const meta = buildMeta(task);
       if (meta) text.appendChild(meta); // AI 录入识别的「截止 / 时长」小标签
       actions.append(
+        iconButton('task-btn js-timer', '⏱', '选中这条任务计时'),
         iconButton('task-btn js-done', task.done ? '↺' : '✓', task.done ? '撤销完成' : '标记完成'),
         iconButton('task-btn js-edit', '✎', '编辑文字'),
         iconButton('task-btn js-del', '✕', '删除')
@@ -277,15 +285,24 @@
     if (!trimmed) return; // 空输入不添乱
     clearUndo();
     const parsed = parseTask(trimmed); // AI 录入：拆出任务名 / 截止 / 时长
+    // 手动填的预估时长优先于文里识别的；备注和优先级只来自表单
+    const manualEst = parseInt(el.estimateInput.value, 10);
     const task = {
       id: makeId(),
       text: parsed.text,
       done: false,
       due: parsed.due,
-      estimate: parsed.estimate,
+      estimate: Number.isFinite(manualEst) && manualEst > 0 ? manualEst : parsed.estimate,
+      note: el.noteInput.value.trim(),
+      priority: el.prioritySelect.value,
+      spent: 0,
     };
     tasks.push(task);
     justAddedId = task.id; // 让它在渲染时滑入
+    // 表单清空，准备加下一条
+    el.noteInput.value = '';
+    el.estimateInput.value = '';
+    el.prioritySelect.value = '中';
     save();
     render();
   }
@@ -419,6 +436,7 @@
 
   el.undoBtn.addEventListener('click', undoDelete);
   el.sortBtn.addEventListener('click', sortByDue);
+  el.clearDoneBtn.addEventListener('click', clearDone);
 
   /* 任务行上的按钮统一用事件委托处理（行是动态生成的） */
   el.list.addEventListener('click', (event) => {
@@ -441,6 +459,10 @@
     const wasEditing = editingId;
     if (editingId && editingId !== id) editingId = null;
 
+    if (event.target.closest('.js-timer')) {
+      selectForTimer(id);
+      return;
+    }
     if (event.target.closest('.js-done')) {
       toggleDone(id);
       return;
@@ -550,10 +572,90 @@
     tasks.splice(to, 0, moving);            // 落到新位置
   }
 
+  /* ---------------- 清空已完成 ---------------- */
+
+  function clearDone() {
+    const before = tasks.length;
+    tasks = tasks.filter((t) => !t.done);
+    if (tasks.length === before) return;   // 没有已完成的，什么都不做
+    if (editingId && !tasks.some((t) => t.id === editingId)) editingId = null;
+    if (timerTaskId && !tasks.some((t) => t.id === timerTaskId)) stopTaskTimer();
+    clearUndo();
+    save();
+    render();
+  }
+
+  /* ---------------- 单任务正计时 ----------------
+     选中一条任务独立计时（与番茄钟互不干扰），每秒给该任务 spent +1，
+     累计耗时随任务一起存进 JSON，重启不丢。 */
+
+  let timerTaskId = null;   // 当前计时的任务 id
+  let timerHandle = null;   // setInterval 句柄
+  let saveTick = 0;         // 每 30 秒落一次盘，不每秒写文件
+
+  function timerTask() {
+    return tasks.find((t) => t.id === timerTaskId) || null;
+  }
+
+  function selectForTimer(id) {
+    if (timerHandle) stopTaskTimer();          // 换任务先停掉旧的
+    timerTaskId = id;
+    renderTimerBar();
+  }
+
+  function startTaskTimer() {
+    const task = timerTask();
+    if (!task || timerHandle) return;
+    timerHandle = setInterval(() => {
+      const t = timerTask();
+      if (!t) { stopTaskTimer(); return; }
+      t.spent = (t.spent || 0) + 1;
+      renderTimerBar();
+      if (++saveTick % 30 === 0) save();       // 半分钟落一次盘
+    }, 1000);
+    renderTimerBar();
+  }
+
+  function stopTaskTimer() {
+    if (timerHandle) { clearInterval(timerHandle); timerHandle = null; save(); }
+    renderTimerBar();
+  }
+
+  function toggleTaskTimer() {
+    if (timerHandle) stopTaskTimer();
+    else startTaskTimer();
+  }
+
+  function renderTimerBar() {
+    const task = timerTask();
+    if (!task) {
+      el.timerTarget.textContent = '未选中任务（点任务行上的 ⏱ 选中）';
+      el.timerClock.textContent = '00:00';
+      el.timerToggle.disabled = true;
+      el.timerToggle.textContent = '开始计时';
+      return;
+    }
+    el.timerTarget.textContent = shorten(task.text, 16);
+    el.timerClock.textContent = formatClock(task.spent || 0);
+    el.timerToggle.disabled = false;
+    el.timerToggle.textContent = timerHandle ? '停止计时' : '开始计时';
+  }
+
+  el.timerToggle.addEventListener('click', toggleTaskTimer);
+
   /* ---------------- 启动 ---------------- */
 
-  load();
-  render();
+  /* 先异步读盘（JSON 文件 / localStorage 兜底），读完再首帧渲染 */
+  PP.load().then(() => {
+    load();
+    render();
+    renderTimerBar();
+  }).catch((err) => {
+    console.warn('数据加载失败，按空列表启动：', err);
+    tasks = [];
+    render();
+    renderTimerBar();
+  });
 
   /* ================= 桌面壳桥接层（Day 8 新增）=================
      上面 455 行是 Day 7 网页版的原逻辑，一个字没改。
